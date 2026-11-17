@@ -1,4 +1,7 @@
 "use client";
+import { useRouter } from "next/navigation";
+import { BillingSettings, type BillingConfiguration } from "./billing-settings";
+import { SAMPLE_NOTICE } from "@/modules/billing/notice";
 import { useState } from "react";
 import type { Role } from "@/modules/auth/policy";
 import { Money as D, taxLine } from "@/modules/billing/tax";
@@ -25,8 +28,9 @@ type Order = {
   dispatch_id: string;
   dispatched_at: string;
   dispatch_cost: string | null;
+  issuance_mode: "demo" | "real";
   credited: boolean;
-  snapshot: { total: string };
+  snapshot: { total: string; notice?: string };
 };
 type Payment = {
   id: string;
@@ -37,11 +41,13 @@ type Payment = {
 };
 export function Sales({
   role,
+  billing,
   initial,
   customers,
   prices,
 }: {
   role: Role;
+  billing: BillingConfiguration | null;
   initial: { orders: Order[]; payments: Payment[] };
   customers: { id: string; name: string }[];
   prices: { productId: string; product: string; amount: string }[];
@@ -53,6 +59,7 @@ export function Sales({
   const [basket, setBasket] = useState<
     { productId: string; quantity: string; rate: string }[]
   >([]);
+  const router = useRouter();
   const admin = role === "admin";
   async function send(query: string, body: unknown, form?: HTMLFormElement) {
     setBusy(true);
@@ -89,6 +96,13 @@ export function Sales({
   return (
     <>
       <h1>Sales orders and billing</h1>
+      {admin && billing && (
+        <BillingSettings
+          initial={billing}
+          products={prices}
+          onSave={() => router.refresh()}
+        />
+      )}
       <p role="status">{message}</p>
       {(admin || role === "salesman") && (
         <form
@@ -297,19 +311,16 @@ export function Sales({
               onSubmit={(e) => {
                 e.preventDefault();
                 const f = formData(e.currentTarget);
-                void send("?invoice=" + o.id, {
-                  date: f.get("date"),
-                  seller: {
-                    name: f.get("sellerName"),
-                    address: f.get("sellerAddress"),
-                    gstin: f.get("gstin"),
-                    state: f.get("state"),
-                    hsn: f.get("hsn"),
+                void send(
+                  (f.get("mode") === "demo" ? "?demoInvoice=" : "?invoice=") +
+                    o.id,
+                  {
+                    date: f.get("date"),
+                    ...(f.get("buyerGstin")
+                      ? { customerGstin: f.get("buyerGstin") }
+                      : {}),
                   },
-                  ...(f.get("buyerGstin")
-                    ? { customerGstin: f.get("buyerGstin") }
-                    : {}),
-                });
+                );
               }}
             >
               <h4>Issue invoice</h4>
@@ -318,25 +329,18 @@ export function Sales({
                 <input name="date" type="date" defaultValue={date()} required />
               </label>
               <label>
-                Seller name
-                <input name="sellerName" required maxLength={100} />
+                Invoice mode
+                <select name="mode">
+                  <option value="real">Real application invoice</option>
+                  {billing?.demoEnabled && (
+                    <option value="demo">Sample exercise invoice</option>
+                  )}
+                </select>
               </label>
-              <label>
-                Seller address
-                <input name="sellerAddress" required maxLength={200} />
-              </label>
-              <label>
-                Seller GSTIN
-                <input name="gstin" pattern="[0-9]{2}[A-Z0-9]{13}" required />
-              </label>
-              <label>
-                Seller state
-                <input name="state" defaultValue="Tamil Nadu" required />
-              </label>
-              <label>
-                HSN
-                <input name="hsn" pattern="[0-9]{4,8}" required />
-              </label>
+              <p>
+                Seller and product HSNs come from the selected business profile.
+                Sample exercise invoices are not valid for tax purposes.
+              </p>
               <label>
                 Customer GSTIN (optional)
                 <input name="buyerGstin" pattern="[0-9]{2}[A-Z0-9]{13}" />
@@ -344,6 +348,7 @@ export function Sales({
               <button disabled={busy}>Issue invoice</button>
             </form>
           )}
+          {o.invoice_id && o.issuance_mode !== "real" && <p>{SAMPLE_NOTICE}</p>}
           {o.invoice_id && (
             <>
               <p>

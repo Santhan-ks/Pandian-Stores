@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { seedDemoBilling } from "./sales-fixture";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
@@ -20,6 +21,8 @@ try {
   );
   await seedDemo(db, process.env.DEMO_PASSWORD ?? "");
   await inventoryFixture(db);
+  if (process.env.NOVA_ALLOW_DEMO_INVOICES === "true")
+    await seedDemoBilling(db);
 } finally {
   await pool.end();
 }

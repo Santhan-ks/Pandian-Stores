@@ -5,6 +5,12 @@ import type { Database } from "../catalog/service";
 import { AccessError, type Actor } from "../auth/policy";
 import { Money as D, taxLine, financialYear } from "../billing/tax";
 import { postDocument } from "../inventory/service";
+import {
+  invoiceConfiguration,
+  validGstin,
+  stateCodes,
+  SAMPLE_NOTICE,
+} from "../billing/profile";
 const quantity = z.string().regex(/^[1-9]\d{0,8}$/);
 const money = z
   .string()
@@ -37,7 +43,7 @@ export async function listSales(db: Database, actor: Actor | null) {
   const user = salesAccess(actor);
   const orders = (
     await db.execute(
-      sql`SELECT o.*,c.name AS customer,c.state,(SELECT jsonb_agg(jsonb_build_object('productId',l.product_id,'product',p.name,'quantity',l.quantity::text,'rate',l.rate::text,'gstPercent',l.gst_percent::text,'onHand',s.quantity::text,'shortage',greatest(l.quantity-s.quantity,0)::text)) FROM nova.sales_order_lines l JOIN nova.products p ON p.id=l.product_id JOIN nova.stock_summary s ON s.id=p.item_id WHERE l.order_id=o.id) AS lines,i.id AS invoice_id,i.number,i.snapshot,i.invoice_date,sd.id AS dispatch_id,sd.posted_at AS dispatched_at,(SELECT CASE WHEN count(*) FILTER(WHERE m.value IS NULL)>0 THEN NULL ELSE -sum(m.value) END FROM nova.inventory_movements m WHERE m.document_id=sd.id)::text AS dispatch_cost,b.outstanding::text,EXISTS(SELECT 1 FROM nova.credit_notes n WHERE n.invoice_id=i.id) AS credited FROM nova.sales_orders o JOIN nova.customers c ON c.id=o.customer_id LEFT JOIN nova.invoices i ON i.order_id=o.id LEFT JOIN nova.dispatches d ON d.invoice_id=i.id LEFT JOIN nova.stock_documents sd ON sd.id=d.id LEFT JOIN nova.invoice_balances b ON b.id=i.id WHERE ${user.role !== "salesman"} OR o.salesman_id=${user.id} ORDER BY o.created_at DESC`,
+      sql`SELECT o.*,c.name AS customer,c.state,(SELECT jsonb_agg(jsonb_build_object('productId',l.product_id,'product',p.name,'quantity',l.quantity::text,'rate',l.rate::text,'gstPercent',l.gst_percent::text,'onHand',s.quantity::text,'shortage',greatest(l.quantity-s.quantity,0)::text)) FROM nova.sales_order_lines l JOIN nova.products p ON p.id=l.product_id JOIN nova.stock_summary s ON s.id=p.item_id WHERE l.order_id=o.id) AS lines,i.id AS invoice_id,i.number,i.snapshot,i.issuance_mode,i.invoice_date,sd.id AS dispatch_id,sd.posted_at AS dispatched_at,(SELECT CASE WHEN count(*) FILTER(WHERE m.value IS NULL)>0 THEN NULL ELSE -sum(m.value) END FROM nova.inventory_movements m WHERE m.document_id=sd.id)::text AS dispatch_cost,b.outstanding::text,EXISTS(SELECT 1 FROM nova.credit_notes n WHERE n.invoice_id=i.id) AS credited FROM nova.sales_orders o JOIN nova.customers c ON c.id=o.customer_id LEFT JOIN nova.invoices i ON i.order_id=o.id LEFT JOIN nova.dispatches d ON d.invoice_id=i.id LEFT JOIN nova.stock_documents sd ON sd.id=d.id LEFT JOIN nova.invoice_balances b ON b.id=i.id WHERE ${user.role !== "salesman"} OR o.salesman_id=${user.id} ORDER BY o.created_at DESC`,
     )
   ).rows;
   const payments =
@@ -181,26 +187,17 @@ async function checkStock(db: Database, id: string) {
       `${short.name}: shortage ${short.shortage} packets.`,
     );
 }
-export const sellerSchema = z
-  .object({
-    name: z.string().min(2).max(100),
-    address: z.string().min(5).max(200),
-    gstin: z.string().regex(/^\d{2}[A-Z0-9]{13}$/),
-    state: z.string().min(2),
-    hsn: z.string().regex(/^\d{4,8}$/),
-  })
-  .strict();
-export async function issueInvoice(
+async function issueConfiguredInvoice(
   db: Database,
   actor: Actor | null,
   id: string,
   input: unknown,
+  mode: "real" | "demo",
 ) {
   const user = salesAccess(actor, true);
   const data = z
     .object({
       date,
-      seller: sellerSchema,
       customerGstin: z
         .string()
         .regex(/^\d{2}[A-Z0-9]{13}$/)
@@ -216,9 +213,16 @@ export async function issueInvoice(
     ).rows[0];
     if (!order) throw new AccessError(404, "Order not found.");
     const existing = (
-      await tx.execute(sql`SELECT id FROM nova.invoices WHERE order_id=${id}`)
+      await tx.execute(
+        sql`SELECT id,issuance_mode FROM nova.invoices WHERE order_id=${id}`,
+      )
     ).rows[0];
-    if (existing) return String(existing.id);
+    if (existing) {
+      if (existing.issuance_mode !== mode)
+        throw new AccessError(409, "Order already invoiced in another mode.");
+      return String(existing.id);
+    }
+    const seller = await invoiceConfiguration(tx, mode);
     if (order.status !== "approved")
       throw new AccessError(409, "Approve the order first.");
     await checkStock(tx, id);
@@ -229,9 +233,19 @@ export async function issueInvoice(
     ).rows[0];
     const raw = (
       await tx.execute(
-        sql`SELECT l.*,p.name FROM nova.sales_order_lines l JOIN nova.products p ON p.id=l.product_id WHERE order_id=${id} ORDER BY product_id`,
+        sql`SELECT l.*,p.name,t.hsn FROM nova.sales_order_lines l JOIN nova.products p ON p.id=l.product_id LEFT JOIN nova.product_tax_settings t ON t.product_id=p.id AND t.mode=${mode} WHERE order_id=${id} ORDER BY product_id`,
       )
     ).rows;
+    if (!stateCodes[String(customer.state)])
+      throw new AccessError(422, "Unsupported place-of-supply state.");
+    if (
+      mode === "real" &&
+      data.customerGstin &&
+      !validGstin(data.customerGstin, stateCodes[String(customer.state)])
+    )
+      throw new AccessError(422, "Customer GSTIN failed validation.");
+    if (raw.some((l) => !/^\d{4,8}$/.test(String(l.hsn))))
+      throw new AccessError(422, "Configure an HSN for every ordered product.");
     const lines = raw.map((l) => ({
       productId: l.product_id,
       description: l.name,
@@ -239,26 +253,29 @@ export async function issueInvoice(
       unit: "packet",
       rate: String(l.rate),
       gstPercent: String(l.gst_percent),
-      hsn: data.seller.hsn,
+      hsn: String(l.hsn),
       ...taxLine(
         String(l.quantity),
         String(l.rate),
         String(l.gst_percent),
-        data.seller.state,
+        String(seller.state),
         String(customer.state),
       ),
     }));
     const total = lines.reduce((s, l) => s.plus(l.total), new D(0)).toFixed(2);
     const fy = financialYear(data.date);
+    const sequenceKey = mode === "demo" ? `SAMPLE/${fy}` : fy;
     const seq = (
       await tx.execute(
-        sql`INSERT INTO nova.invoice_sequences(financial_year,last_number) VALUES(${fy},1) ON CONFLICT(financial_year) DO UPDATE SET last_number=nova.invoice_sequences.last_number+1 RETURNING last_number`,
+        sql`INSERT INTO nova.invoice_sequences(financial_year,last_number) VALUES(${sequenceKey},1) ON CONFLICT(financial_year) DO UPDATE SET last_number=nova.invoice_sequences.last_number+1 RETURNING last_number`,
       )
     ).rows[0];
-    const number = `NOVA/${fy}/${String(seq.last_number).padStart(5, "0")}`;
+    const number = `${mode === "demo" ? "SAMPLE" : "NOVA"}/${fy}/${String(seq.last_number).padStart(5, "0")}`;
     const invoiceId = randomUUID();
     const snapshot = {
-      seller: data.seller,
+      seller,
+      mode,
+      notice: mode === "demo" ? SAMPLE_NOTICE : null,
       customer: { ...customer, gstin: data.customerGstin ?? null },
       placeOfSupply: customer.state,
       lines,
@@ -268,7 +285,7 @@ export async function issueInvoice(
       financialYear: fy,
     };
     await tx.execute(
-      sql`INSERT INTO nova.invoices(id,order_id,number,financial_year,invoice_date,snapshot,total,created_by) VALUES(${invoiceId},${id},${number},${fy},${data.date},${JSON.stringify(snapshot)}::jsonb,${total}::numeric,${user.id})`,
+      sql`INSERT INTO nova.invoices(id,order_id,number,financial_year,invoice_date,snapshot,total,created_by,issuance_mode) VALUES(${invoiceId},${id},${number},${fy},${data.date},${JSON.stringify(snapshot)}::jsonb,${total}::numeric,${user.id},${mode})`,
     );
     await tx.execute(
       sql`UPDATE nova.sales_orders SET status='invoiced' WHERE id=${id}`,
@@ -361,4 +378,21 @@ export async function creditInvoice(
     );
     await audit(tx, user, id, "invoice.credit", i, { reason, amount: i.total });
   });
+}
+
+export function issueInvoice(
+  db: Database,
+  actor: Actor | null,
+  id: string,
+  input: unknown,
+) {
+  return issueConfiguredInvoice(db, actor, id, input, "real");
+}
+export function issueDemoInvoice(
+  db: Database,
+  actor: Actor | null,
+  id: string,
+  input: unknown,
+) {
+  return issueConfiguredInvoice(db, actor, id, input, "demo");
 }

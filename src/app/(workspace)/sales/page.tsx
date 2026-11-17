@@ -1,3 +1,4 @@
+import { readProfiles, demoInvoicesEnabled } from "@/modules/billing/profile";
 import { currentActor } from "@/modules/auth/server";
 import { salesAccess, listSales } from "@/modules/sales/service";
 import { listMaster } from "@/modules/catalog/service";
@@ -13,6 +14,16 @@ export default async function SalesPage() {
   ]);
   return (
     <Sales
+      billing={
+        actor.role === "admin"
+          ? {
+              profiles: JSON.parse(
+                JSON.stringify(await readProfiles(db, actor)),
+              ),
+              demoEnabled: demoInvoicesEnabled(),
+            }
+          : null
+      }
       role={actor.role}
       initial={JSON.parse(JSON.stringify(data))}
       customers={customers as { id: string; name: string }[]}

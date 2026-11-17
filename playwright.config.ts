@@ -21,6 +21,7 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       DATABASE_URL: database,
+      NOVA_ALLOW_DEMO_INVOICES: "true",
       BETTER_AUTH_URL: "http://localhost:3100",
       BETTER_AUTH_SECRET:
         process.env.BETTER_AUTH_SECRET ??

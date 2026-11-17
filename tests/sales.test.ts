@@ -10,7 +10,8 @@ import { productionFixture } from "../scripts/production-fixture";
 import {
   submitOrder,
   reviewOrder,
-  issueInvoice,
+  issueDemoInvoice as issueInvoice,
+  issueInvoice as issueRealInvoice,
   dispatchOrder,
   listSales,
   creditInvoice,
@@ -31,7 +32,11 @@ const admin = { id: "demo-admin", role: "admin" } as const;
 const a = { id: "demo-salesman-a", role: "salesman" } as const;
 const b = { id: "demo-salesman-b", role: "salesman" } as const;
 const auditor = { id: "demo-auditor", role: "auditor" } as const;
-import { exerciseInvoice } from "../scripts/sales-fixture";
+import {
+  exerciseInvoice,
+  exerciseProfile,
+  seedDemoBilling,
+} from "../scripts/sales-fixture";
 function order(customerId = "demo-retailer-a", qty = "150") {
   return {
     customerId,
@@ -64,12 +69,14 @@ function payment(invoice: string, amount = "4000") {
   };
 }
 beforeEach(async () => {
+  process.env.NOVA_ALLOW_DEMO_INVOICES = "true";
   await db.execute(
     sql`TRUNCATE nova.users,nova.roles,nova.units,nova.inventory_items,nova.territories CASCADE`,
   );
   await seedDemo(db, process.env.DEMO_PASSWORD ?? randomUUID());
   await inventoryFixture(db);
   await productionFixture(db);
+  await seedDemoBilling(db);
 }, 30000);
 afterAll(() => pool.end());
 test("exact Stage 4 benchmark, shortage, IGST preview, PDF and partial payment", async () => {
@@ -270,5 +277,122 @@ test("full credit preserves invoice, zeros receivable and never reverses dispatc
   ).toBe(true);
   await expect(recordPayment(db, admin, payment(invoice))).rejects.toThrow(
     /exceeds/,
+  );
+});
+import {
+  saveProfile,
+  validGstin,
+  SAMPLE_NOTICE,
+} from "../src/modules/billing/profile";
+test("real issuance requires a validated database profile and product HSN; demo identity is rejected", async () => {
+  const id = await approved("10");
+  await expect(
+    issueRealInvoice(db, admin, id, { date: "2026-11-17" }),
+  ).rejects.toThrow(/profile/);
+  await expect(
+    saveProfile(db, admin, { ...exerciseProfile, mode: "real" }),
+  ).rejects.toThrow(/GSTIN/);
+  expect(validGstin(exerciseProfile.gstin, "33")).toBe(false);
+  expect(validGstin("33ABCDE1234F1Z7", "33")).toBe(true);
+  expect(validGstin("33ABCDE1234F1Z0", "33")).toBe(false);
+  expect(validGstin("33ABCDE1234F1Z7", "29")).toBe(false);
+  const real = {
+    ...exerciseProfile,
+    mode: "real",
+    name: "Synthetic validation fixture only",
+    gstin: "33ABCDE1234F1Z7",
+  };
+  await saveProfile(db, admin, real);
+  await db.execute(
+    sql`DELETE FROM nova.product_tax_settings WHERE mode='real'`,
+  );
+  await expect(
+    issueRealInvoice(db, admin, id, { date: "2026-11-17" }),
+  ).rejects.toThrow(/HSN/);
+  await saveProfile(db, admin, real);
+  await expect(
+    issueRealInvoice(db, admin, id, {
+      date: "2026-11-17",
+      seller: exerciseProfile,
+    }),
+  ).rejects.toThrow();
+  const invoice = await issueRealInvoice(db, admin, id, { date: "2026-11-17" });
+  const before = (
+    await db.execute(
+      sql`SELECT snapshot,issuance_mode FROM nova.invoices WHERE id=${invoice}`,
+    )
+  ).rows[0];
+  expect(before.issuance_mode).toBe("real");
+  expect((before.snapshot as { seller: { name: string } }).seller.name).toBe(
+    real.name,
+  );
+  expect(
+    invoicePdf(before.snapshot as Record<string, unknown>).toString("latin1"),
+  ).not.toContain("SAMPLE INVOICE");
+  await saveProfile(db, admin, {
+    ...real,
+    name: "Changed business name",
+    products: [{ productId: "demo-murukku", hsn: "9999" }],
+  });
+  await db.execute(
+    sql`UPDATE nova.customers SET address='Changed later billing address' WHERE id='demo-retailer-a'`,
+  );
+  expect(
+    (
+      await db.execute(
+        sql`SELECT snapshot FROM nova.invoices WHERE id=${invoice}`,
+      )
+    ).rows[0].snapshot,
+  ).toEqual(before.snapshot);
+  await expect(issueInvoice(db, admin, id, exerciseInvoice)).rejects.toThrow(
+    /another mode/,
+  );
+});
+test("sample issuance is explicitly enabled and visibly labelled; real rates remain configurable", async () => {
+  const id = await approved("10");
+  process.env.NOVA_ALLOW_DEMO_INVOICES = "false";
+  await expect(issueInvoice(db, admin, id, exerciseInvoice)).rejects.toThrow(
+    /disabled/,
+  );
+  process.env.NOVA_ALLOW_DEMO_INVOICES = "true";
+  const invoice = await issueInvoice(db, admin, id, exerciseInvoice);
+  const snapshot = (
+    await db.execute(
+      sql`SELECT snapshot FROM nova.invoices WHERE id=${invoice}`,
+    )
+  ).rows[0].snapshot as Record<string, unknown>;
+  expect(snapshot.notice).toBe(SAMPLE_NOTICE);
+  expect(snapshot.mode).toBe("demo");
+  expect(String(snapshot.number)).toMatch(/^SAMPLE\//);
+  expect(invoicePdf(snapshot).toString("latin1")).toContain(
+    "SAMPLE INVOICE \x97 NOT VALID FOR TAX PURPOSES",
+  );
+  await db.execute(
+    sql`UPDATE nova.product_prices SET gst_percent=12 WHERE product_id='demo-murukku'`,
+  );
+  await saveProfile(db, admin, {
+    ...exerciseProfile,
+    mode: "real",
+    name: "Synthetic validation fixture only",
+    gstin: "33ABCDE1234F1Z7",
+  });
+  const realOrder = await approved("10");
+  const realInvoice = await issueRealInvoice(db, admin, realOrder, {
+    date: "2026-11-17",
+  });
+  const realSnapshot = (
+    await db.execute(
+      sql`SELECT snapshot FROM nova.invoices WHERE id=${realInvoice}`,
+    )
+  ).rows[0].snapshot as { lines: Record<string, string>[] };
+  expect(realSnapshot.lines[0]).toMatchObject({
+    gstPercent: "12.00",
+    cgst: "30.00",
+    sgst: "30.00",
+    total: "560.00",
+  });
+  await expect(saveProfile(db, a, exerciseProfile)).rejects.toThrow(/admins/);
+  await expect(saveProfile(db, auditor, exerciseProfile)).rejects.toThrow(
+    /admins/,
   );
 });

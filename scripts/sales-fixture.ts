@@ -1,25 +1,35 @@
+import { saveProfile } from "../src/modules/billing/profile";
 import { sql } from "drizzle-orm";
 import type { Database } from "../src/modules/catalog/service";
 import {
   submitOrder,
   reviewOrder,
-  issueInvoice,
+  issueDemoInvoice,
   dispatchOrder,
 } from "../src/modules/sales/service";
 import { recordPayment } from "../src/modules/payments/service";
 import { Money as D } from "../src/modules/billing/tax";
 // Explicitly invented exercise identity; never supplied as a real seller default.
-export const exerciseInvoice = {
-  date: "2026-11-17",
-  seller: {
-    name: "Exercise-only manufacturer",
-    address: "Invented exercise address, Tamil Nadu",
-    state: "Tamil Nadu",
-    gstin: "33AAAAA0000A1Z5",
-    hsn: "1905",
-  },
+export const exerciseInvoice = { date: "2026-11-17" };
+export const exerciseProfile = {
+  mode: "demo" as const,
+  name: "Exercise-only manufacturer",
+  address: "Invented exercise address, Tamil Nadu",
+  state: "Tamil Nadu" as const,
+  gstin: "DEMO-NOT-A-GSTIN",
+  products: [{ productId: "demo-murukku", hsn: "1905" }],
 };
+export async function seedDemoBilling(db: Database) {
+  const existing = (
+    await db.execute(
+      sql`SELECT mode FROM nova.business_profiles WHERE mode='demo'`,
+    )
+  ).rows[0];
+  if (!existing)
+    await saveProfile(db, { id: "demo-admin", role: "admin" }, exerciseProfile);
+}
 export async function salesFixture(db: Database) {
+  await seedDemoBilling(db);
   const admin = { id: "demo-admin", role: "admin" } as const;
   const first = await submitOrder(
     db,
@@ -40,7 +50,7 @@ export async function salesFixture(db: Database) {
       decision: "approve",
       reason: "Benchmark stock checked",
     });
-  const invoice = await issueInvoice(db, admin, first, exerciseInvoice);
+  const invoice = await issueDemoInvoice(db, admin, first, exerciseInvoice);
   await dispatchOrder(db, admin, first);
   const second = await submitOrder(
     db,

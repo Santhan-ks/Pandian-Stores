@@ -7,7 +7,11 @@ import * as schema from "../../src/lib/db/schema";
 test("mobile order to approval, invoice PDF, dispatch, partial collection and auditor view", async ({
   page,
 }) => {
-  execFileSync(process.execPath, ["--import", "tsx", "scripts/prepare-e2e.ts"]);
+  execFileSync(
+    process.execPath,
+    ["--import", "tsx", "scripts/prepare-e2e.ts"],
+    { env: { ...process.env, NOVA_ALLOW_DEMO_INVOICES: "true" } },
+  );
   const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
   try {
     await productionFixture(drizzle(pool, { schema }));
@@ -36,23 +40,45 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   ).toBeVisible();
   await page.getByRole("button", { name: "Log out" }).click();
   await login("admin@example.test");
+  await page
+    .getByText("Business profile and product HSN configuration", {
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("combobox", { name: "Profile mode", exact: true })
+    .selectOption("demo");
+  await expect(page.getByLabel("Business GSTIN", { exact: true })).toHaveValue(
+    "DEMO-NOT-A-GSTIN",
+  );
+  await page
+    .getByRole("button", { name: "Save business profile", exact: true })
+    .click();
+  await expect(page.getByText("Profile saved.", { exact: true })).toBeVisible();
+  await page
+    .getByText("Business profile and product HSN configuration", {
+      exact: true,
+    })
+    .click();
   await page.getByLabel("Review reason").fill("Benchmark stock verified");
   await page.getByRole("button", { name: "Save review" }).click();
   await expect(
     page.getByRole("heading", { name: "Retailer A — approved" }),
   ).toBeVisible();
-  await page.getByLabel("Seller name").fill("Exercise-only manufacturer");
   await page
-    .getByLabel("Seller address")
-    .fill("Invented exercise address, Tamil Nadu");
-  await page
-    .getByLabel("Seller GSTIN", { exact: true })
-    .fill("33AAAAA0000A1Z5");
-  await page.getByLabel("HSN", { exact: true }).fill("1905");
+    .getByRole("combobox", { name: "Invoice mode", exact: true })
+    .selectOption("demo");
   await page
     .getByRole("button", { name: "Issue invoice", exact: true })
     .click();
   await expect(page.getByText(/Outstanding INR 7875/)).toBeVisible();
+  await expect(
+    page
+      .locator("section")
+      .getByText("SAMPLE INVOICE \u2014 NOT VALID FOR TAX PURPOSES", {
+        exact: true,
+      }),
+  ).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download invoice PDF" }).click();
   expect((await download).suggestedFilename()).toBe("invoice.pdf");
