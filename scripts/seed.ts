@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../src/lib/db/schema";
 import { seedDemo } from "./seed-data";
+import { inventoryFixture } from "./inventory-fixture";
 if (
   process.env.NOVA_ALLOW_DEMO_SEED !== "true" ||
   process.env.NODE_ENV === "production"
@@ -17,6 +18,8 @@ if (!url || (test && url === process.env.DATABASE_URL))
 const pool = new Pool({ connectionString: url });
 try {
   await seedDemo(drizzle(pool, { schema }), process.env.DEMO_PASSWORD ?? "");
+  if (process.argv.includes("--inventory"))
+    await inventoryFixture(drizzle(pool, { schema }));
   console.log("Demo masters seeded; existing records and passwords preserved.");
 } finally {
   await pool.end();

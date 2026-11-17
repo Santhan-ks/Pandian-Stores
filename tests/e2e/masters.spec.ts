@@ -1,4 +1,76 @@
 import { test, expect } from "@playwright/test";
+
+test("admin posts opening stock and a purchase through inventory forms", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("admin@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill(process.env.DEMO_PASSWORD!);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/products/);
+  const material = "Browser flour " + Date.now();
+  await page.goto("/materials");
+  await page.getByLabel("Name", { exact: true }).fill(material);
+  await page
+    .getByRole("combobox", { name: "Kind", exact: true })
+    .selectOption("raw");
+  await page
+    .getByRole("combobox", { name: "Base unit", exact: true })
+    .selectOption("g");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    page.getByRole("cell", { name: material, exact: true }),
+  ).toBeVisible();
+  await page.goto("/inventory");
+  await expect(
+    page.getByRole("heading", { name: "Inventory", exact: true }),
+  ).toBeVisible();
+  const reason = "Browser opening " + Date.now();
+  await page
+    .getByRole("combobox", { name: "Document type", exact: true })
+    .selectOption("opening");
+  await page.getByLabel("Reason / reference").fill(reason);
+  await page
+    .getByRole("combobox", { name: "Inventory item", exact: true })
+    .selectOption({ label: material });
+  await page.getByLabel("Quantity", { exact: true }).fill("100");
+  await page
+    .getByRole("combobox", { name: "Unit", exact: true })
+    .selectOption("kg");
+  await page.getByLabel("INR per selected unit (blank = unknown)").fill("42");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  const document = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: reason }) });
+  await document.locator("summary").click();
+  await document.getByRole("button", { name: "Post document" }).click();
+  await expect(document.locator("summary")).toContainText("posted");
+  await page
+    .getByRole("combobox", { name: "Document type", exact: true })
+    .selectOption("purchase");
+  await page
+    .getByRole("combobox", { name: "Supplier", exact: true })
+    .selectOption({ index: 1 });
+  const purchase = "Browser purchase " + Date.now();
+  await page.getByLabel("Reason / reference").fill(purchase);
+  await page.getByLabel("Quantity", { exact: true }).fill("60");
+  await page.getByLabel("INR per selected unit (blank = unknown)").fill("45");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  const receipt = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: purchase }) });
+  await receipt.locator("summary").click();
+  await receipt.getByRole("button", { name: "Post document" }).click();
+  await expect(receipt.locator("summary")).toContainText("posted");
+  const row = page
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell", { name: material, exact: true }) });
+  await expect(row).toContainText("160000");
+  await expect(row).toContainText("6900.00");
+});
+
 test("mobile salesman can see only assigned customers and logout", async ({
   page,
 }) => {

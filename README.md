@@ -1,6 +1,6 @@
 # NOVA
 
-NOVA is an Order-to-Audit manufacturing system for the NIT Tiruchirappalli internship assessment. Stage 1 implements credential login, five roles, territory-scoped customers, suppliers, materials, products and pack sizes, prices, unit conversions, and published BOM revisions. Stage 0's PostgreSQL health endpoint remains available. Stock movements, purchases, production posting, invoices, payments and reports are not implemented.
+NOVA is an Order-to-Audit manufacturing system for the NIT Tiruchirappalli internship assessment. Stage 1 implements credential login, five roles, territory-scoped customers, suppliers, materials, products and pack sizes, prices, unit conversions, and published BOM revisions. Stage 0's PostgreSQL health endpoint remains available. Stage 2 adds opening documents, purchases, controlled adjustments and an immutable inventory ledger. Production posting, invoices, payments and reports are not implemented.
 
 ## Run locally
 
@@ -46,7 +46,7 @@ Restrictions are enforced in services and APIs as well as navigation. Salesman c
 
 The seed creates Murukku 200 g at INR 50 before the exercise's configurable 5% GST rate, 20 packets per carton, and a BOM for one batch yielding 200 packets: flour 40 kg, oil 10 L, salt/spice 1.2 kg, pouches 200 pieces, cartons 10 pieces. Retailer A belongs to Salesman A's Tamil Nadu territory; Distributor B belongs to Salesman B's Karnataka territory. All fixture IDs use a `demo-` prefix and addresses are explicitly invented. No supplier is invented by the benchmark seed because the source names none.
 
-No opening stock or transaction is seeded. The full benchmark's stock, tax invoice, variance and costing acceptance results remain unimplemented; no results are claimed for them.
+The default Stage 1 seed still creates only masters. Run `npm run db:seed -- --inventory` for the Stage 2 opening and purchase checkpoint. Only the Stage 2 stock checkpoint is implemented; tax invoices, production variance and costing acceptance results remain unimplemented.
 
 ## Validation
 
@@ -73,4 +73,18 @@ The CI workflow runs these checks against a PostgreSQL service. To evolve the sc
 
 ## Current limitations
 
-This stage is a local assessment foundation, with one app instance. Auth rate limiting is held in process memory; multiple instances would need shared rate-limit storage. HTTPS and deployment-specific secrets are required outside localhost. There is no email delivery, password recovery, account deactivation, or production bootstrap command. Master lists are not paginated. Prices retain audit history but do not yet have effective dates or customer-specific price lists. Users have one assigned role. BOMs are published immediately rather than saved as drafts. Business benchmark modules, exports, the final design note and the submission walkthrough belong to later stages.
+This stage is a local assessment foundation, with one app instance. Auth rate limiting is held in process memory; multiple instances would need shared rate-limit storage. HTTPS and deployment-specific secrets are required outside localhost. There is no email delivery, password recovery, account deactivation, or production bootstrap command. Master lists are not paginated. Prices retain audit history but do not yet have effective dates or customer-specific price lists. Users have one assigned role. BOMs are published immediately rather than saved as drafts. Remaining business benchmark modules, exports, the final design note and the submission walkthrough belong to later stages.
+
+## Stage 2 inventory
+
+The Inventory page supports opening and purchase drafts, draft edits, posting, purchase history, stock summary/valuation, adjustments, movement details and item/category/UTC date filters. Admins can post all three document categories; production supervisors can create and post purchases. Owners and auditors can read; salesmen cannot access inventory.
+
+Migrations 0004 and 0005 define `stock_documents`, `stock_document_lines`, `inventory_movements`, the derived `stock_summary` view and posting/immutability triggers. These SQL objects are maintained through custom Drizzle migrations and accessed through parameterized Drizzle SQL services. Documents have explicit purchase/opening/adjustment categories; each movement has a foreign-key document and line, item, base unit, actor, time, signed quantity/value, and original/corrected quantity. There is no editable balance cache.
+
+Posting locks the document, then all affected inventory item rows in item-ID order. PostgreSQL validates units, quantities and available stock, inserts the movements, updates the document and appends its audit event in one transaction. A line failure rolls everything back. Repeated posting returns the existing document; unique request keys protect draft creation, and changed payloads with reused keys are rejected. Published movements and posted documents/lines cannot be edited or deleted. Draft changes are audited. Corrections are signed adjustment documents with mandatory reasons; adjustments never overwrite balances.
+
+Moving average is total signed known ledger value divided by on-hand base-unit quantity. Receipt value is entered quantity times its unit rate; issues and positive adjustments use the existing average. PostgreSQL arbitrary-precision NUMERIC performs the authoritative arithmetic without a two-decimal intermediate rounding step. Recurring division follows PostgreSQL NUMERIC precision. Currency display alone uses decimal half-up rounding to two places. The 50 finished packets have unknown value; unknown movements conservatively keep subsequent positive balances unvalued (zero stock has zero value). Explicit revaluation is not available in this stage.
+
+`npm run db:seed -- --inventory` creates the exact opening quantities and the 60 kg flour purchase, with an explicitly invented demo flour supplier. Run it again to check idempotency. Its checkpoint is: flour 160 kg / INR 6,900 / INR 43.125 per kg; oil 30 L; spice 5 kg; pouches 500; cartons 30; finished Murukku 50 packets with unavailable valuation. There are no production movements. The integration suite asserts each checkpoint value before testing later adjustments.
+
+`npm test` includes database tests for posting/reruns, request idempotency, exact receipt value, weighted average, competing issues, insufficient stock, rollback, units, immutable records, reconciliation and permissions. Test files run sequentially because they reset the same isolated database. The browser suite adds opening/purchase form posting to Stage 1 regressions. Lists remain unpaginated and there is no purchase cancellation or explicit revaluation workflow; a posted correction is a separate adjustment with a reason. This is a single PostgreSQL database design, with no external accounting service.

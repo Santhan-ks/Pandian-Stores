@@ -16,6 +16,7 @@ export class AccessError extends Error {
   }
 }
 export function canRead(role: Role, resource: string) {
+  if (resource === "inventory") return role !== "salesman";
   if (resource === "users") return ["admin", "owner", "auditor"].includes(role);
   if (resource === "customers") return role !== "production";
   if (resource === "territories")
