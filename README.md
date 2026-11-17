@@ -1,6 +1,6 @@
 # NOVA
 
-NOVA is an Order-to-Audit manufacturing system for the NIT Tiruchirappalli internship assessment. Stage 1 implements credential login, five roles, territory-scoped customers, suppliers, materials, products and pack sizes, prices, unit conversions, and published BOM revisions. Stage 0's PostgreSQL health endpoint remains available. Stage 2 adds opening documents, purchases, controlled adjustments and an immutable inventory ledger. Production posting, invoices, payments and reports are not implemented.
+NOVA is an Order-to-Audit manufacturing system for the NIT Tiruchirappalli internship assessment. Stage 1 implements credential login, five roles, territory-scoped customers, suppliers, materials, products and pack sizes, prices, unit conversions, and published BOM revisions. Stage 0's PostgreSQL health endpoint remains available. Stage 2 adds opening documents, purchases, controlled adjustments and an immutable inventory ledger. Stage 3 adds BOM-driven production, variance and run costing. Orders, invoices, dispatch, payments and reports are not implemented.
 
 ## Run locally
 
@@ -46,7 +46,7 @@ Restrictions are enforced in services and APIs as well as navigation. Salesman c
 
 The seed creates Murukku 200 g at INR 50 before the exercise's configurable 5% GST rate, 20 packets per carton, and a BOM for one batch yielding 200 packets: flour 40 kg, oil 10 L, salt/spice 1.2 kg, pouches 200 pieces, cartons 10 pieces. Retailer A belongs to Salesman A's Tamil Nadu territory; Distributor B belongs to Salesman B's Karnataka territory. All fixture IDs use a `demo-` prefix and addresses are explicitly invented. No supplier is invented by the benchmark seed because the source names none.
 
-The default Stage 1 seed still creates only masters. Run `npm run db:seed -- --inventory` for the Stage 2 opening and purchase checkpoint. Only the Stage 2 stock checkpoint is implemented; tax invoices, production variance and costing acceptance results remain unimplemented.
+The default Stage 1 seed still creates only masters. Run `npm run db:seed -- --inventory` for the Stage 2 opening and purchase checkpoint. The Stage 3 checkpoint is available with `npm run db:seed -- --production`; it posts opening stock, the purchase, production and overheads idempotently. Tax invoices, dispatch and payments remain unimplemented.
 
 ## Validation
 
@@ -67,7 +67,7 @@ docker compose up --build -d app
 npm run test:smoke
 ```
 
-`npm test` resets Stage 1 tables only in the explicitly configured isolated database whose name ends in `_test`, then seeds fixtures and tests authentication, expiry, authorization, customer isolation, validation, SQL constraints, conversions, BOM preservation and seed reruns. Never point `TEST_DATABASE_URL` at an application database. Playwright uses this same test database with a separate server on port 3100; run `npm test` before it. Its mobile Chromium flows cover login/logout, supplier creation, BOM revision and auditor restrictions. `test:smoke` checks the running app at `SMOKE_BASE_URL` (default localhost:3000), using the seeded local demo credentials; it tests HTTP permissions, territory isolation and logout without creating business data.
+`npm test` resets application test tables in the explicitly configured isolated database whose name ends in `_test`, then seeds fixtures and tests authentication, expiry, authorization, customer isolation, validation, SQL constraints, conversions, BOM preservation and seed reruns. Never point `TEST_DATABASE_URL` at an application database. Playwright uses this same test database with a separate server on port 3100; the browser command resets and seeds its isolated test database before starting. Its mobile Chromium flows cover login/logout, supplier creation, BOM revision and auditor restrictions. `test:smoke` checks the running app at `SMOKE_BASE_URL` (default localhost:3000), using the seeded local demo credentials; it tests HTTP permissions, territory isolation and logout without creating business data.
 
 The CI workflow runs these checks against a PostgreSQL service. To evolve the schema, run `npm run db:generate -- --name meaningful_name`, review its SQL and commit the migration; custom constraint migrations must also be versioned. Never edit an already applied migration.
 
@@ -85,6 +85,34 @@ Posting locks the document, then all affected inventory item rows in item-ID ord
 
 Moving average is total signed known ledger value divided by on-hand base-unit quantity. Receipt value is entered quantity times its unit rate; issues and positive adjustments use the existing average. PostgreSQL arbitrary-precision NUMERIC performs the authoritative arithmetic without a two-decimal intermediate rounding step. Recurring division follows PostgreSQL NUMERIC precision. Currency display alone uses decimal half-up rounding to two places. The 50 finished packets have unknown value; unknown movements conservatively keep subsequent positive balances unvalued (zero stock has zero value). Explicit revaluation is not available in this stage.
 
-`npm run db:seed -- --inventory` creates the exact opening quantities and the 60 kg flour purchase, with an explicitly invented demo flour supplier. Run it again to check idempotency. Its checkpoint is: flour 160 kg / INR 6,900 / INR 43.125 per kg; oil 30 L; spice 5 kg; pouches 500; cartons 30; finished Murukku 50 packets with unavailable valuation. There are no production movements. The integration suite asserts each checkpoint value before testing later adjustments.
+`npm run db:seed -- --inventory` creates the exact opening quantities and the 60 kg flour purchase, with an explicitly invented demo flour supplier. Run it again to check idempotency. Its checkpoint is: flour 160 kg / INR 6,900 / INR 43.125 per kg; oil 30 L; spice 5 kg; pouches 500; cartons 30; finished Murukku 50 packets with unavailable valuation. The `--inventory` flag stops before production; `--production` continues through the next checkpoint. The integration suite asserts each checkpoint value before testing later adjustments.
 
 `npm test` includes database tests for posting/reruns, request idempotency, exact receipt value, weighted average, competing issues, insufficient stock, rollback, units, immutable records, reconciliation and permissions. Test files run sequentially because they reset the same isolated database. The browser suite adds opening/purchase form posting to Stage 1 regressions. Lists remain unpaginated and there is no purchase cancellation or explicit revaluation workflow; a posted correction is a separate adjustment with a reason. This is a single PostgreSQL database design, with no external accounting service.
+
+## Stage 3 production
+
+Production runs are drafts linked one-to-one to Stage 2 stock documents. Select a finished product, published BOM revision and planned batch count; the service scales each component and expected output by `planned batches / BOM standard batch size`. Enter total actual consumption, included damaged/wasted quantities, good packets and a variance tolerance (default 3%). Drafts can be edited with audit history and never affect stock. Admins and production supervisors can create/edit/post runs and add overheads. Owners and auditors can read; salesmen cannot access production.
+
+Migrations 0006–0008 add `production_runs`, `production_inputs`, `production_cost_snapshots`, `production_overheads` and the `production_costs` view. BOM identity, revision, planned quantities, actual consumption, damage and tolerance are saved in each run snapshot. Posting preserves that snapshot and rejects later changes. It reuses the inventory `postDocument` service and the existing `post_stock_document` trigger, extended for production documents. All affected items are locked in deterministic order; actual material/packaging issues and the accepted finished output are posted together, or all roll back. Posting retries do not add movements. The finished receipt is valued at the sum of actual consumed material costs from the issue movements. A material cost snapshot is created in that same transaction.
+
+Damage is a subset of total consumption, never an extra issue: benchmark pouches are 194 total, including 6 damaged and 188 used on good packets. Packaging status is not separately tracked; nine cartons cover 180 of the 188 good packets, so the remaining eight are assumed loose. No extra carton is fabricated. Every BOM component currently requires positive actual consumption and each run requires positive whole good output; zero-output failed runs and omitted/substituted components are not supported.
+
+Variance is `(actual - planned) / planned * 100`, computed with decimal arithmetic. Alerts compare the absolute unrounded difference against tolerance using cross multiplication, so exactly 3% is not flagged. A zero expected quantity yields an undefined percentage and flags only nonzero actual use. The run preserves the tolerance used. Users may configure it per draft. Material and yield variance displays come from the saved snapshot.
+
+Overheads are positive append-only events with category, reason, actor, time and idempotency key. They may be recorded before or after posting. Each addition records before/after run-cost information in the audit trail; run cost is material snapshot plus overhead events, divided by good output. Existing material snapshots and ledger entries never change. Overhead corrections/reversals and a formal costing-close workflow are not implemented. Draft material costs are unavailable until posting. Production computations use decimal strings and a 40-significant-digit Decimal context; authoritative stock valuation remains PostgreSQL NUMERIC. Currency display uses two-place half-up rounding.
+
+Finished inventory valuation remains provisional: produced receipts carry material cost only. Subsequent overheads affect the run report, not those immutable receipts. The initial 50 packets remain explicitly unvalued; consequently aggregate finished inventory value stays unavailable even though this production run has a measurable cost. NOVA does not spread the run cost across all 238 packets or invent an opening value. A future financial close/revaluation design is needed before treating this as final financial inventory valuation.
+
+The complete `--production` checkpoint (also asserted against isolated PostgreSQL in the test suite) is:
+
+| Result                               | Value                                |
+| ------------------------------------ | ------------------------------------ |
+| Flour / oil / spice                  | 120 kg / 19.5 L / 3.8 kg             |
+| Pouches / cartons / finished packets | 306 / 21 / 238                       |
+| Yield / oil variance                 | -6% / +5%, both flagged              |
+| Flour / oil / spice costs            | INR 1,725 / 1,470 / 240              |
+| Pouches / cartons costs              | INR 485 / 135                        |
+| Materials / overheads / total        | INR 4,055 / 1,800 / 5,855            |
+| Cost per accepted packet             | INR 5,855 / 188, displayed INR 31.14 |
+
+Other consumption variances are flour 0%, spice 0%, pouches -3% (at tolerance, no alert), and cartons -10% (flagged). The fixture uses the unchanged benchmark revision 1 and does not dispatch anything. Browser tests cover supervisor draft/posting, overhead addition and read-only auditor costing, alongside Stages 0–2 regressions. Lists remain unpaginated and costing is a run report rather than a statutory accounting report.

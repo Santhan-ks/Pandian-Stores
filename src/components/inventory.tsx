@@ -185,6 +185,7 @@ export function Inventory({
               ))}
           </ul>
           {d.status === "draft" &&
+            d.category !== "production" &&
             (role === "admin" ||
               (role === "production" && d.category === "purchase")) && (
               <>

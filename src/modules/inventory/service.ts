@@ -19,6 +19,11 @@ export async function reviseDraft(
       )
     ).rows[0];
     if (!previous) throw new AccessError(404, "Document not found.");
+    if (previous.category === "production")
+      throw new AccessError(
+        403,
+        "Use the production workflow for this document.",
+      );
     inventoryAccess(actor, String(previous.category));
     if (previous.status !== "draft")
       throw new AccessError(409, "Posted documents are immutable.");
@@ -73,7 +78,10 @@ export function inventoryAccess(actor: Actor | null, category?: string) {
     actor.role === "salesman" ||
     (category &&
       actor.role !== "admin" &&
-      !(actor.role === "production" && category === "purchase"))
+      !(
+        actor.role === "production" &&
+        ["purchase", "production"].includes(category)
+      ))
   )
     throw new AccessError(403, "Inventory operation is not permitted.");
   return actor;
@@ -147,7 +155,9 @@ export async function readInventory(
   const filter = z
     .object({
       item: z.string().optional(),
-      category: z.enum(["opening", "purchase", "adjustment", ""]).optional(),
+      category: z
+        .enum(["opening", "purchase", "adjustment", "production", ""])
+        .optional(),
       from: z
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)

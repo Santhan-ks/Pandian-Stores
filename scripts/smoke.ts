@@ -33,6 +33,8 @@ for (const [email, expected] of [
   const customers = await fetch(base + "/api/masters/customers", { headers });
   const inventory = await fetch(base + "/api/inventory", { headers });
   assert.equal(inventory.status, email?.startsWith("salesman") ? 403 : 200);
+  const production = await fetch(base + "/api/production", { headers });
+  assert.equal(production.status, email?.startsWith("salesman") ? 403 : 200);
   assert.equal(customers.status, 200);
   if (expected)
     assert.deepEqual(
