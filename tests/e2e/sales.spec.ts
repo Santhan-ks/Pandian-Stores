@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { productionFixture } from "../../scripts/production-fixture";
@@ -81,7 +82,13 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   ).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download invoice PDF" }).click();
-  expect((await download).suggestedFilename()).toBe("invoice.pdf");
+  const pdf = await download;
+  expect(pdf.suggestedFilename()).toBe("invoice.pdf");
+  const bytes = readFileSync((await pdf.path())!);
+  expect(bytes.toString("latin1")).toContain(
+    "SAMPLE INVOICE \x97 NOT VALID FOR TAX PURPOSES",
+  );
+  expect(bytes.toString("latin1")).toContain("Invoice total INR: 7875.00");
   await page.getByRole("button", { name: "Confirm full dispatch" }).click();
   await expect(
     page.getByRole("heading", { name: "Retailer A — dispatched" }),
@@ -97,10 +104,45 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
     .getByRole("button", { name: "Record payment", exact: true })
     .click();
   await expect(page.getByText(/Outstanding INR 3875/)).toBeVisible();
-  await page.getByRole("button", { name: "Log out" }).click();
+  // Retain the admin's valid session while visiting the other roles, respecting the login rate limit.
+  const adminCookies = await page.context().cookies();
+  await page.context().clearCookies();
   await login("auditor@example.test");
   await expect(page.getByText(/Outstanding INR 3875/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Record payment", exact: true }),
   ).toHaveCount(0);
+  await page.getByRole("button", { name: "Log out" }).click();
+  await login("salesman.b@example.test");
+  await expect(
+    page.getByRole("option", { name: "Retailer A", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
+  await page.getByLabel("Order quantity").fill("120");
+  await page.getByRole("button", { name: "Submit order", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Distributor B — submitted" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.context().addCookies(adminCookies);
+  await page.goto("/sales");
+  await page.getByLabel("Review reason").fill("Final benchmark shortage check");
+  await page.getByRole("button", { name: "Save review", exact: true }).click();
+  await expect(page.getByText(/shortage 32/)).toBeVisible();
+  const distributor = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Distributor B — submitted" }),
+  });
+  await expect(
+    distributor.getByRole("cell", { name: "88", exact: true }),
+  ).toBeVisible();
+  await expect(
+    distributor.getByRole("link", { name: "Download invoice PDF" }),
+  ).toHaveCount(0);
+  await expect(
+    distributor.getByRole("cell", {
+      name: "IGST (Tamil Nadu seller)",
+      exact: true,
+    }),
+  ).toBeVisible();
 });

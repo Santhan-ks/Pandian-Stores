@@ -80,7 +80,24 @@ beforeEach(async () => {
 }, 30000);
 afterAll(() => pool.end());
 test("exact Stage 4 benchmark, shortage, IGST preview, PDF and partial payment", async () => {
+  const before = (
+    await db.execute(
+      sql`SELECT quantity FROM nova.stock_summary WHERE id='demo-finished'`,
+    )
+  ).rows[0];
+  expect(new D(String(before.quantity)).eq(238)).toBe(true);
   const { id, invoice } = await invoiced();
+  expect(
+    new D(
+      String(
+        (
+          await db.execute(
+            sql`SELECT quantity FROM nova.stock_summary WHERE id='demo-finished'`,
+          )
+        ).rows[0].quantity,
+      ),
+    ).eq(238),
+  ).toBe(true);
   const i = (
     await db.execute(sql`SELECT * FROM nova.invoices WHERE id=${invoice}`)
   ).rows[0];
@@ -104,6 +121,30 @@ test("exact Stage 4 benchmark, shortage, IGST preview, PDF and partial payment",
   ).rows[0];
   expect(new D(String(stock.quantity)).eq(88)).toBe(true);
   expect(stock.value).toBeNull();
+  const movements = (
+    await db.execute(
+      sql`SELECT m.*,d.category,d.status,x.invoice_id,i.order_id FROM nova.inventory_movements m JOIN nova.stock_documents d ON d.id=m.document_id JOIN nova.dispatches x ON x.id=d.id JOIN nova.invoices i ON i.id=x.invoice_id WHERE i.order_id=${id}`,
+    )
+  ).rows;
+  expect(movements).toHaveLength(1);
+  expect(movements[0]).toMatchObject({
+    category: "dispatch",
+    status: "posted",
+    invoice_id: invoice,
+    order_id: id,
+    actor_id: admin.id,
+    item_id: "demo-finished",
+    base_unit: "packet",
+    value: null,
+  });
+  expect(new D(String(movements[0].quantity)).eq(-150)).toBe(true);
+  expect(new D(String(movements[0].quantity_before)).eq(238)).toBe(true);
+  expect(new D(String(movements[0].quantity_after)).eq(88)).toBe(true);
+  await expect(
+    db.execute(
+      sql`UPDATE nova.inventory_movements SET value=0 WHERE id=${movements[0].id}`,
+    ),
+  ).rejects.toThrow();
   const second = await submitOrder(db, b, order("demo-distributor-b", "120"));
   await expect(
     reviewOrder(db, admin, second, {
@@ -119,6 +160,40 @@ test("exact Stage 4 benchmark, shortage, IGST preview, PDF and partial payment",
     cgst: "0.00",
     sgst: "0.00",
   });
+  await expect(dispatchOrder(db, b, second)).rejects.toThrow(/permitted/);
+  await expect(dispatchOrder(db, admin, second)).rejects.toThrow(/invoice/);
+  expect(
+    (
+      await db.execute(
+        sql`SELECT * FROM nova.inventory_movements WHERE document_id=${movements[0].document_id}`,
+      )
+    ).rows,
+  ).toHaveLength(1);
+  expect(
+    new D(
+      String(
+        (
+          await db.execute(
+            sql`SELECT quantity FROM nova.stock_summary WHERE id='demo-finished'`,
+          )
+        ).rows[0].quantity,
+      ),
+    ).eq(88),
+  ).toBe(true);
+  expect(
+    (
+      await db.execute(
+        sql`SELECT id FROM nova.invoices WHERE order_id=${second}`,
+      )
+    ).rows,
+  ).toHaveLength(0);
+  expect(
+    (
+      await db.execute(
+        sql`SELECT status FROM nova.sales_orders WHERE id=${second}`,
+      )
+    ).rows[0].status,
+  ).toBe("submitted");
   const p = payment(invoice);
   expect(await recordPayment(db, admin, p)).toBe(
     await recordPayment(db, admin, p),
@@ -395,4 +470,97 @@ test("sample issuance is explicitly enabled and visibly labelled; real rates rem
   await expect(saveProfile(db, auditor, exerciseProfile)).rejects.toThrow(
     /admins/,
   );
+});
+import { readProfiles } from "../src/modules/billing/profile";
+test("an existing payment cannot receive extra allocations beyond its immutable amount", async () => {
+  const first = await invoiced("10"),
+    second = await invoiced("10");
+  const paymentId = await recordPayment(
+    db,
+    admin,
+    payment(first.invoice, "100"),
+  );
+  await expect(
+    db.transaction(async (tx) => {
+      await tx.execute(
+        sql`INSERT INTO nova.payment_allocations(payment_id,invoice_id,amount) VALUES(${paymentId},${second.invoice},1)`,
+      );
+    }),
+  ).rejects.toThrow();
+  const allocated = (
+    await db.execute(
+      sql`SELECT sum(amount)::text AS amount FROM nova.payment_allocations WHERE payment_id=${paymentId}`,
+    )
+  ).rows[0];
+  expect(new D(String(allocated.amount)).eq(100)).toBe(true);
+});
+
+test("actual interstate invoice and independent financial-year numbering use stored supply details", async () => {
+  const id = await submitOrder(db, b, order("demo-distributor-b", "120"));
+  await reviewOrder(db, admin, id, {
+    decision: "approve",
+    reason: "Stock available before benchmark dispatch",
+  });
+  const invoice = await issueInvoice(db, admin, id, { date: "2026-03-31" });
+  const row = (
+    await db.execute(sql`SELECT * FROM nova.invoices WHERE id=${invoice}`)
+  ).rows[0];
+  expect(row.financial_year).toBe("2025-26");
+  expect(String(row.number)).toMatch(/^SAMPLE\/2025-26\//);
+  const snapshot = row.snapshot as {
+    seller: { state: string };
+    customer: { state: string };
+    lines: ReturnType<typeof taxLine>[];
+  };
+  expect(snapshot.seller.state).toBe("Tamil Nadu");
+  expect(snapshot.customer.state).toBe("Karnataka");
+  expect(snapshot.lines[0]).toMatchObject({
+    taxable: "6000.00",
+    cgst: "0.00",
+    sgst: "0.00",
+    igst: "300.00",
+    total: "6300.00",
+  });
+  const next = await approved("10");
+  const nextInvoice = await issueInvoice(db, admin, next, {
+    date: "2026-04-01",
+  });
+  const nextRow = (
+    await db.execute(
+      sql`SELECT number,financial_year FROM nova.invoices WHERE id=${nextInvoice}`,
+    )
+  ).rows[0];
+  expect(nextRow.financial_year).toBe("2026-27");
+  expect(String(nextRow.number)).toMatch(/^SAMPLE\/2026-27\//);
+  const sequences = (
+    await db.execute(
+      sql`SELECT financial_year FROM nova.invoice_sequences WHERE financial_year IN ('SAMPLE/2025-26','SAMPLE/2026-27')`,
+    )
+  ).rows;
+  expect(sequences).toHaveLength(2);
+  await expect(readProfiles(db, a)).rejects.toThrow(/admins/);
+  await expect(readProfiles(db, auditor)).rejects.toThrow(/admins/);
+});
+
+test("payment allocations reject mismatched totals, other customers and conflicting request retries", async () => {
+  const { invoice } = await invoiced();
+  const data = payment(invoice, "100");
+  await expect(
+    recordPayment(db, admin, { ...data, amount: "101" }),
+  ).rejects.toThrow(/exact payment/);
+  await expect(
+    recordPayment(db, admin, { ...data, customerId: "demo-distributor-b" }),
+  ).rejects.toThrow(/customer/);
+  await expect(recordPayment(db, auditor, data)).rejects.toThrow(/permitted/);
+  await recordPayment(db, admin, data);
+  await expect(
+    recordPayment(db, admin, { ...data, reference: "Different operation" }),
+  ).rejects.toThrow(/already used/);
+  const totals = (
+    await db.execute(
+      sql`SELECT count(*)::int AS n,sum(amount)::text AS amount FROM nova.payments`,
+    )
+  ).rows[0];
+  expect(totals.n).toBe(1);
+  expect(new D(String(totals.amount)).eq(100)).toBe(true);
 });
