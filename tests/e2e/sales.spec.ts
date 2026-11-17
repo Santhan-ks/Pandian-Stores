@@ -112,8 +112,59 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   await expect(
     page.getByRole("button", { name: "Record payment", exact: true }),
   ).toHaveCount(0);
+  await page.goto(
+    "/reports?kind=sales&from=2026-11-01&to=2026-11-30&asOf=2026-11-30",
+  );
+  await expect(
+    page.getByText("No records for the selected filters.", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Invoice scope", exact: true })
+    .selectOption("demo");
+  await page.getByRole("button", { name: "Run report", exact: true }).click();
+  await expect(
+    page.getByRole("cell", { name: "Retailer A", exact: true }),
+  ).toBeVisible();
+  const csvDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download CSV", exact: true }).click();
+  const csvFile = await csvDownload;
+  expect(csvFile.suggestedFilename()).toBe("nova-sales-demo.csv");
+  const csv = readFileSync((await csvFile.path())!, "utf8");
+  expect(csv).toContain('"7875.00"');
+  expect(csv).toContain("DEMONSTRATION ONLY");
+  const reportDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download PDF", exact: true }).click();
+  const reportFile = await reportDownload;
+  expect(reportFile.suggestedFilename()).toBe("nova-sales-demo.pdf");
+  expect(readFileSync((await reportFile.path())!).toString("latin1")).toContain(
+    "7875.00",
+  );
+  await page.goto("/dashboard?scope=demo");
+  await expect(
+    page.getByRole("heading", { name: "Owner dashboard", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("INR 7875.00", { exact: true })).toBeVisible();
+  const denied = await page.request.get(
+    "/api/reports?kind=stock&format=csv&from=2026-11-01&to=2026-11-30&asOf=2026-11-30",
+  );
+  expect(denied.status()).toBe(200);
   await page.getByRole("button", { name: "Log out" }).click();
   await login("salesman.b@example.test");
+  expect(
+    (await page.request.get("/api/reports?kind=gst&format=csv")).status(),
+  ).toBe(403);
+  expect(
+    (await page.request.get("/api/reports?kind=stock&format=pdf")).status(),
+  ).toBe(403);
+  expect((await page.request.get("/api/dashboard?scope=demo")).status()).toBe(
+    403,
+  );
+  const ownReport = await page.request.get(
+    "/api/reports?kind=sales&scope=demo&from=2026-11-01&to=2026-11-30&asOf=2026-11-30",
+  );
+  expect(ownReport.status()).toBe(200);
+  expect((await ownReport.json()).rows).toHaveLength(0);
+
   await expect(
     page.getByRole("option", { name: "Retailer A", exact: true }),
   ).toHaveCount(0);

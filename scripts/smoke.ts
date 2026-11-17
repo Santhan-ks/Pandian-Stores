@@ -6,6 +6,15 @@ assert(password, "DEMO_PASSWORD is required");
 assert.equal((await fetch(base + "/api/health")).status, 200);
 assert.equal((await fetch(base + "/api/masters/customers")).status, 401);
 assert.equal(
+  (await fetch(base + "/api/reports?kind=sales&format=csv")).status,
+  401,
+);
+assert.equal(
+  (await fetch(base + "/api/reports?kind=stock&format=pdf")).status,
+  401,
+);
+assert.equal((await fetch(base + "/api/dashboard")).status, 401);
+assert.equal(
   (await fetch(base + "/products", { redirect: "manual" })).status,
   307,
 );
@@ -37,6 +46,28 @@ for (const [email, expected] of [
   assert.equal(production.status, email?.startsWith("salesman") ? 403 : 200);
   const sales = await fetch(base + "/api/sales", { headers });
   assert.equal(sales.status, 200);
+  const reports = await fetch(base + "/api/reports?kind=sales&scope=demo", {
+    headers,
+  });
+  assert.equal(reports.status, 200);
+  const reportData = await reports.json();
+  if (expected)
+    assert(
+      reportData.rows.every(
+        (r: { customer: string }) =>
+          r.customer ===
+          (expected === "demo-retailer-a" ? "Retailer A" : "Distributor B"),
+      ),
+    );
+  assert.equal(
+    (await fetch(base + "/api/reports?kind=stock&format=pdf", { headers }))
+      .status,
+    email?.startsWith("salesman") ? 403 : 200,
+  );
+  assert.equal(
+    (await fetch(base + "/api/dashboard?scope=demo", { headers })).status,
+    email?.startsWith("salesman") ? 403 : 200,
+  );
   const salesData = await sales.json();
   if (expected)
     assert(
