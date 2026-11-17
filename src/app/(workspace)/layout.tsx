@@ -36,6 +36,7 @@ export default async function WorkspaceLayout({
           "boms",
           "inventory",
           "production",
+          "sales",
         ]
           .filter((r) => canRead(actor.role, r))
           .map((r) => (

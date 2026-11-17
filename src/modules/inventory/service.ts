@@ -19,11 +19,8 @@ export async function reviseDraft(
       )
     ).rows[0];
     if (!previous) throw new AccessError(404, "Document not found.");
-    if (previous.category === "production")
-      throw new AccessError(
-        403,
-        "Use the production workflow for this document.",
-      );
+    if (["production", "dispatch"].includes(String(previous.category)))
+      throw new AccessError(403, "Use the source workflow for this document.");
     inventoryAccess(actor, String(previous.category));
     if (previous.status !== "draft")
       throw new AccessError(409, "Posted documents are immutable.");
@@ -156,7 +153,14 @@ export async function readInventory(
     .object({
       item: z.string().optional(),
       category: z
-        .enum(["opening", "purchase", "adjustment", "production", ""])
+        .enum([
+          "opening",
+          "purchase",
+          "adjustment",
+          "production",
+          "dispatch",
+          "",
+        ])
         .optional(),
       from: z
         .string()

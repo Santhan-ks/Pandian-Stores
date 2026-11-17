@@ -35,6 +35,26 @@ for (const [email, expected] of [
   assert.equal(inventory.status, email?.startsWith("salesman") ? 403 : 200);
   const production = await fetch(base + "/api/production", { headers });
   assert.equal(production.status, email?.startsWith("salesman") ? 403 : 200);
+  const sales = await fetch(base + "/api/sales", { headers });
+  assert.equal(sales.status, 200);
+  const salesData = await sales.json();
+  if (expected)
+    assert(
+      salesData.orders.every(
+        (o: { customer_id: string }) => o.customer_id === expected,
+      ),
+    );
+  if (email === "auditor")
+    assert.equal(
+      (
+        await fetch(base + "/api/sales?dispatch=forbidden", {
+          method: "POST",
+          headers,
+          body: "{}",
+        })
+      ).status,
+      403,
+    );
   assert.equal(customers.status, 200);
   if (expected)
     assert.deepEqual(

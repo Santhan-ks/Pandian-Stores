@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../src/lib/db/schema";
 import { seedDemo } from "./seed-data";
 import { inventoryFixture } from "./inventory-fixture";
+import { salesFixture } from "./sales-fixture";
 import { productionFixture } from "./production-fixture";
 if (
   process.env.NOVA_ALLOW_DEMO_SEED !== "true" ||
@@ -21,11 +22,14 @@ try {
   await seedDemo(drizzle(pool, { schema }), process.env.DEMO_PASSWORD ?? "");
   if (
     process.argv.includes("--inventory") ||
-    process.argv.includes("--production")
+    process.argv.includes("--production") ||
+    process.argv.includes("--sales")
   )
     await inventoryFixture(drizzle(pool, { schema }));
-  if (process.argv.includes("--production"))
+  if (process.argv.includes("--production") || process.argv.includes("--sales"))
     await productionFixture(drizzle(pool, { schema }));
+  if (process.argv.includes("--sales"))
+    await salesFixture(drizzle(pool, { schema }));
   console.log("Demo masters seeded; existing records and passwords preserved.");
 } finally {
   await pool.end();
