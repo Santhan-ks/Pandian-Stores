@@ -20,6 +20,8 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql://nova:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/nova
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set a random auth secret in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
