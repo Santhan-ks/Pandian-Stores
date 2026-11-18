@@ -64,7 +64,6 @@ export default function Login() {
             priority
             unoptimized
           />
-          <figcaption>Murukku / Product illustration</figcaption>
         </figure>
         <p className="login-story-footer">
           PANDIAN STORES <span>ORDER TO AUDIT</span>

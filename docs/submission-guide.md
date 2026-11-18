@@ -5,11 +5,11 @@ This is a recording plan and interview aid, not a recorded video. Public product
 ## Prepare the recording
 
 1. Follow the README setup with a new Compose project and unused loopback ports if another Pandian Stores instance is running. Keep the same project name in every command. Do not reuse or erase working business data.
-2. For a manual walkthrough, run `npm run db:seed` without checkpoint flags on that fresh database. This creates masters and the published BOM, with no opening stock or transactions. Do not run `--sales` first; that would complete the workflow before filming.
+2. For a manual walkthrough, run `npm run db:seed -- --catalog` without checkpoint flags on that fresh database. This creates masters and the published BOM, with no opening stock or transactions. Do not run `--sales` first; that would complete the workflow before filming.
 3. Set the local demo password, seed opt-in and demo-invoice opt-in as described in the README. Verify login for admin, both salesmen, supervisor and auditor. Hide password entry, environment files, cookies and database URLs during recording. The README publishes the fictional local test password; operational credentials and authentication/database secrets must remain private.
 4. Create the fictional supplier in Suppliers: name `Demo flour supplier (invented)`, Tamil Nadu, with an explicitly invented address. Configure the **demo** business profile in Sales using fictional manufacturer name/address, Tamil Nadu, `DEMO-NOT-A-GSTIN` and exercise-only HSN `1905` for Murukku. Leave the real profile unconfigured. This preparation creates no stock movement or invoice.
 5. Confirm Murukku **200 g**, INR 50 before the assumed 5% tax, 20 packets/carton, and published revision 1. Its one-batch plan is flour 40 kg, oil 10 L, spice 1.2 kg, pouches 200 pieces and cartons ten pieces; expected output is 200 packets.
-6. Use a desktop window for admin/supervisor, a 360 px browser viewport for the salesman shot, and an auditor/owner login for the final read-only view. Rehearse role switches; reuse existing authorized sessions where practical rather than repeatedly hitting login limits. Use only the real application, not edited mock screens.
+6. Use a desktop window for admin/supervisor, a 360 px browser viewport for the salesman shot, and an auditor login for the final read-only view (owner additionally has eligible-record deletion). Rehearse role switches; reuse existing authorized sessions where practical rather than repeatedly hitting login limits. Use only the real application, not edited mock screens.
 
 If you want a completed review dataset rather than a manual recording, use the README's twice-run `--sales` seed instead. Choose one approach per fresh database. Checkpoint seeds are not general reset/replay commands for manually modified data.
 
@@ -89,7 +89,7 @@ Before sharing the recording: verify duration <= 8:00, legible numbers, sample n
 
 Create a new **Murukku 500 g product**, which gets a separate finished-item identity, and specify its own carton capacity. Reuse appropriate raw/packaging masters; do not change the 200 g product's identity or historical snapshots. Configure its own price, assumed/verified tax rate as appropriate and mode-specific HSN. Publish a separate BOM with explicitly justified expected output and packaging consumption; do not blindly multiply every 200 g line by 2.5. Produce/post against that revision, then order/invoice that product normally. Shared raw stock still uses the same ledger and locks, while finished balances and product filters remain separate.
 
-Before implementing that exercise, add focused checks for pack identity preservation, BOM scaling/units, shared-material shortages, independent finished balances, multi-product tax/snapshot totals and reports. This guide proposes the interview approach; Stage 7 does not add the new product or business functionality.
+Before implementing that exercise, add focused checks for pack identity preservation, BOM scaling/units, shared-material shortages, independent finished balances, multi-product tax/snapshot totals and reports. The final catalogue review now supplies an illustrative 500 g product identity through `--catalog`, but does not invent its price, tax/HSN or recipe. The remaining configuration and operational exercise still require approved values. See the README catalogue assumptions.
 
 ## Manual submission checklist
 

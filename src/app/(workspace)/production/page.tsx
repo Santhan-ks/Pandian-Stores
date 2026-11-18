@@ -21,6 +21,7 @@ export default async function Page() {
   return (
     <Production
       writable={["admin", "production"].includes(actor.role)}
+      deletable={["admin", "owner"].includes(actor.role)}
       prices={
         JSON.parse(JSON.stringify(await listMaster(db, actor, "prices"))) as {
           productId: string;

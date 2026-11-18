@@ -6,6 +6,7 @@ import { seedDemo } from "./seed-data";
 import { inventoryFixture } from "./inventory-fixture";
 import { salesFixture } from "./sales-fixture";
 import { productionFixture } from "./production-fixture";
+import { seedDemoCatalog } from "./catalog-fixture";
 if (
   process.env.NOVA_ALLOW_DEMO_SEED !== "true" ||
   process.env.NODE_ENV === "production"
@@ -20,6 +21,8 @@ if (!url || (test && url === process.env.DATABASE_URL))
 const pool = new Pool({ connectionString: url });
 try {
   await seedDemo(drizzle(pool, { schema }), process.env.DEMO_PASSWORD ?? "");
+  if (process.argv.includes("--catalog"))
+    await seedDemoCatalog(drizzle(pool, { schema }));
   if (
     process.argv.includes("--inventory") ||
     process.argv.includes("--production") ||

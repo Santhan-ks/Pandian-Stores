@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { pageActor } from "@/modules/auth/server";
-import { canRead, canWrite } from "@/modules/auth/policy";
+import { canRead, canWrite, canDelete } from "@/modules/auth/policy";
+import { DeleteRecord } from "@/components/delete-record";
 import { getDatabase } from "@/lib/db/connection";
 import { listBoms, listMaster } from "@/modules/catalog/service";
 import { BomForm } from "@/components/bom-form";
@@ -21,6 +22,14 @@ export default async function BomsPage() {
               {b.product} — Revision {b.revision}
             </Link>{" "}
             · {b.active ? "Active" : "Previous"} · {b.expectedOutput} packets
+            {canDelete(actor.role) && (
+              <DeleteRecord
+                resource="boms"
+                id={b.id}
+                label={`${b.product} revision ${b.revision}`}
+                protectedReason="Published recipes are immutable history."
+              />
+            )}
           </li>
         ))}
       </ul>

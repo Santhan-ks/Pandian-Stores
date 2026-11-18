@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Decimal } from "decimal.js";
+import { DeleteRecord } from "./delete-record";
 type Row = Record<string, unknown>;
 const money = (value: unknown) =>
   value === null
@@ -196,6 +197,22 @@ export function Inventory({
                 </li>
               ))}
           </ul>
+          {["admin", "owner"].includes(role) && d.category !== "production" && (
+            <DeleteRecord
+              resource="stock"
+              id={String(d.id)}
+              label={String(d.reason)}
+              protectedReason={
+                d.status === "posted"
+                  ? "Posted stock movements cannot be deleted. Use a correction."
+                  : undefined
+              }
+              onDeleted={() => {
+                setEditing(null);
+                setKey(crypto.randomUUID());
+              }}
+            />
+          )}
           {d.status === "draft" &&
             d.category !== "production" &&
             (role === "admin" ||

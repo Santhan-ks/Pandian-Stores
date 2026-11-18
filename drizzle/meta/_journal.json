@@ -99,6 +99,13 @@
       "when": 1794935958423,
       "tag": "0013_system_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795016978456,
+      "tag": "0014_safe_record_deletion",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,9 @@ test("branded login loads its local imagery, fits desktop/mobile and reveals pas
   ).toBe(404);
   await expect(page).toHaveTitle("Sign in | Pandian Stores");
   await expect(
+    page.getByText("Murukku / Product illustration", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page.getByRole("heading", { name: "Welcome back" }),
   ).toBeVisible();
   const image = page.getByRole("img", {

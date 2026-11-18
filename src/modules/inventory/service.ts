@@ -1,3 +1,4 @@
+import { assertRequestActive } from "../records/service";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -91,6 +92,7 @@ export async function createDocument(
   const data = documentInput.parse(input);
   const user = inventoryAccess(actor, data.category);
   return db.transaction(async (tx) => {
+    await assertRequestActive(tx, "stock", data.requestKey);
     const id = randomUUID();
     const inserted = await tx.execute(
       sql`INSERT INTO nova.stock_documents(id,category,supplier_id,reason,request_key,payload,created_by) VALUES(${id},${data.category},${data.supplierId},${data.reason},${data.requestKey},${JSON.stringify(data)}::jsonb,${user.id}) ON CONFLICT(request_key) DO NOTHING RETURNING id`,

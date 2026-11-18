@@ -63,6 +63,7 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npm run test:review
       - name: Check HTTP health
         env:
           DATABASE_URL: postgresql://nova:local_ci_password@localhost:5432/nova_test

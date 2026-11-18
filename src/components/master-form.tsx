@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { DeleteRecord } from "./delete-record";
 export type Field = {
   key: string;
   label: string;
@@ -12,11 +13,13 @@ export function MasterEditor({
   rows,
   fields,
   writable,
+  deletable = false,
 }: {
   resource: string;
   rows: Record<string, unknown>[];
   fields: Field[];
   writable: boolean;
+  deletable?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
@@ -94,7 +97,7 @@ export function MasterEditor({
               {fields.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
-              {writable && <th>Action</th>}
+              {(writable || deletable) && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -106,17 +109,30 @@ export function MasterEditor({
                       String(row[f.key] ?? "")}
                   </td>
                 ))}
-                {writable && (
+                {(writable || deletable) && (
                   <td>
-                    <button
-                      onClick={() => {
-                        setEditing(row);
-                        setKey((k) => k + 1);
-                        setError("");
-                      }}
-                    >
-                      Edit
-                    </button>
+                    {writable && (
+                      <button
+                        onClick={() => {
+                          setEditing(row);
+                          setKey((k) => k + 1);
+                          setError("");
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {deletable && (
+                      <DeleteRecord
+                        resource={resource}
+                        id={String(row.id)}
+                        label={String(row.name ?? row.product ?? row.id)}
+                        onDeleted={() => {
+                          setEditing(null);
+                          setQuery("");
+                        }}
+                      />
+                    )}
                   </td>
                 )}
               </tr>

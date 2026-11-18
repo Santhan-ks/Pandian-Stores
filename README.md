@@ -8,7 +8,7 @@ Submission artifacts: [two-page architecture design note](output/pdf/pandian-sto
 
 ## Architecture and repository
 
-The visible brand is **Pandian Stores**, using a gold, white and black interface, an original vector monogram and illustrative Murukku photography. New real invoice numbers use `PANDIAN/<financial-year>/<sequence>`; sample numbering remains separate. Existing posted invoice numbers, seller/customer snapshots and audit history remain immutable. The PostgreSQL `nova` namespace, database names and `NOVA_*` environment keys are retained for migration/configuration compatibility; they are technical identifiers, not the shop name.
+The visible brand is **Pandian Stores**, using a gold, white and black interface, an original vector monogram and illustrative snack imagery. New real invoice numbers use `PANDIAN/<financial-year>/<sequence>`; sample numbering remains separate. Existing posted invoice numbers, seller/customer snapshots and audit history remain immutable. The PostgreSQL `nova` namespace, database names and `NOVA_*` environment keys are retained for migration/configuration compatibility; they are technical identifiers, not the shop name.
 
 The workspace has role-filtered navigation, directory search, product cards, live dashboard totals, highlighted variance alerts and mobile layouts. Production shows an estimated margin against the current pre-tax price (benchmark INR 18.86 per packet / 37.71%); this is not realized dispatch profit and does not replace unknown historical valuation. Product images are local WebP assets, explicitly labelled illustrative. The unused Next.js image optimizer is disabled; no external image patterns are configured.
 
@@ -39,9 +39,9 @@ Checked against the [NIT Tiruchirappalli problem statement](https://docs.google.
 src/app/               Workspace pages and authenticated API routes
 src/components/        Business forms, tables and navigation
 src/modules/           auth, catalog, inventory, production, sales,
-                       billing, payments and reporting services
+                       billing, payments, reporting and safe record deletion
 src/lib/               Database connection/schema, units and text PDF renderer
-drizzle/               Migrations 0000-0013, SQL guards/views and metadata
+drizzle/               Migrations 0000-0014, SQL guards/views and metadata
 scripts/               Migrations, fictional fixtures, smoke/fresh-system checks
 tests/                 PostgreSQL regressions and Chromium browser flows
 docker/                First-volume test-database initialization
@@ -54,9 +54,9 @@ Services own authorization and transaction boundaries. Inventory and financial S
 
 ## Requirements and configuration
 
-UI/rebrand validation passed 59 automated tests across eight files, seven Chromium flows (including desktop/mobile login, local image loading, password visibility and the full order-to-payment path), lint, formatting, type checking, production build, Docker rebuild/readiness/HTTP smoke, and the fresh-database benchmark/report/export verifier. Desktop/mobile screenshots and the renamed two-page design note were visually inspected. Full and production dependency audits still exit 1 with 16/five high entries; no dependency versions were changed. The automated mobile order-entry timing is not a human usability study.
+The latest executed final-debug results and role/action coverage are recorded in [the final debug report](docs/final-debug-report.md). Earlier stage verification results below are historical. Full and production dependency audits remain failing; functional checks do not clear that exception. Automated mobile order-entry timing is not a human usability study.
 
-Use Node.js **24**, its npm, Docker with Linux containers and Docker Compose supporting `--wait`. The default loopback ports are 5432 for PostgreSQL, 3000 for the app and 3100 for browser tests. The first installation needs registry/image network access. Docker images are pinned by digest; npm installs from `package-lock.json`.
+Use Node.js **24**, its npm, Docker with Linux containers and Docker Compose supporting `--wait`. The default loopback ports are 5432 for PostgreSQL, 3000 for the app and 3100 for workflow browser tests and 3200 for the separate role review. The first installation needs registry/image network access. Docker images are pinned by digest; npm installs from `package-lock.json`.
 
 Copy `.env.example` to `.env` (`cp .env.example .env` works in PowerShell and POSIX shells), then edit it locally:
 
@@ -85,8 +85,8 @@ docker compose -p nova-demo config --quiet
 docker compose -p nova-demo up -d --wait db
 npm run db:migrate
 npm run db:migrate:test
-npm run db:seed -- --sales
-npm run db:seed -- --sales
+npm run db:seed -- --sales --catalog
+npm run db:seed -- --sales --catalog
 docker compose -p nova-demo up --build -d --wait app
 npm run test:smoke
 ```
@@ -114,7 +114,7 @@ For host development after database setup, use `npm run dev -- --hostname 127.0.
 
 The local demo password for all six accounts below is **`123456123456`**. Set `DEMO_PASSWORD=123456123456` in the private `.env` before seeding a fresh demo database. This is a published password for fictional local demo accounts only; do not use it for real operations.
 
-One role is assigned per user. Admins can create users/reset passwords; updates invalidate that user's sessions. Owners and auditors have read-only business access. Changing `.env` alone does not reset an existing user's password.
+One role is assigned per user. Admins can create users/reset passwords; updates invalidate that user's sessions. Auditors have read-only business access. Owners read business data and may delete eligible unused records/drafts; they cannot create, edit, approve or post business transactions. Changing `.env` alone does not reset an existing user's password.
 
 | Account                   | Permissions                                                                                                                                      |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -123,9 +123,39 @@ One role is assigned per user. Admins can create users/reset passwords; updates 
 | `admin@example.test`      | All masters, user/territory administration, opening/purchase/adjustment posting, BOMs, production, sales review, billing, dispatch and payments. |
 | `production@example.test` | Suppliers/materials/BOM publication, purchases and production/overheads; inventory and production reports. No sales access.                      |
 | `auditor@example.test`    | Read business masters, stock, production, sales, reports and dashboard; no posting.                                                              |
-| `owner@example.test`      | Read business masters, stock, production, sales, reports and dashboard; no posting.                                                              |
+| `owner@example.test`      | Read business data and delete eligible unused setup/drafts; no create/edit/approve/post authority.                                               |
+
+password for every demo email ID is "123456123456"
 
 Sessions are stored in PostgreSQL, expire after eight hours and have a one-hour update interval; cookie session caching is disabled. Public signup is disabled. Auth exposes login, session lookup and logout only. Password hashes/session tokens are excluded from master responses and audit data. Salesman history and PDF access require both order ownership and current customer territory assignment.
+
+## Product catalogue coverage
+
+The assessment background names Murukku, Mixture, Chips and Sweets; its worked benchmark defines **Murukku 200 g** only. The interview exercise also mentions a **Murukku 500 g** pack. `npm run db:seed -- --catalog` adds the four missing illustrative products without changing existing stock/history. Combine `--catalog` with any checkpoint option; it does not post stock. It is opt-in and idempotent.
+
+| Product       | Image              | Operational configuration                                          |
+| ------------- | ------------------ | ------------------------------------------------------------------ |
+| Murukku 200 g | Murukku            | Existing benchmark price, tax assumption and published BOM         |
+| Murukku 500 g | Murukku            | Pack identity only; needs its own price, tax/HSN and published BOM |
+| Mixture 200 g | Mixture            | Illustrative category pack; needs price, tax/HSN and published BOM |
+| Chips 200 g   | Banana chips       | Illustrative category pack; needs price, tax/HSN and published BOM |
+| Sweets 200 g  | Mysore pak / laddu | Illustrative category pack; needs price, tax/HSN and published BOM |
+
+The new category pack weights (200 g), twenty-packet carton capacities, banana-chip variety and depicted sweet assortment are explicit demonstration assumptions, not specifications supplied by the assessment. No unsupported recipe, selling price, GST rate or opening balance is invented. Product cards show actual price/BOM readiness. Unpriced packs are excluded from order entry; unconfigured recipes cannot be produced. An admin must supply approved operational values before using these packs. Images depict categories, not actual manufactured batches.
+
+## Safe record deletion
+
+Admin and owner have confirmation-based **Delete** controls on eligible records. Auditors, supervisors and salesmen cannot delete. The API rechecks the current stored role, rejects cross-origin requests and writes the deletion audit event in the same transaction. Self deletion, deleting/demoting the last administrator and breaking database references are rejected.
+
+| Record                                                                                                                          | Delete behavior                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users, customers, territories, suppliers, materials, products, prices                                                           | Delete only when unused/unreferenced; remove dependent unused setup first. Deleting a product also removes its unused finished item. Credential/session cleanup follows database relationships. |
+| Opening, purchase, adjustment drafts                                                                                            | Delete lines and draft together; no ledger effect.                                                                                                                                              |
+| Production drafts                                                                                                               | Delete inputs and draft together only when no posted movements or overhead events exist.                                                                                                        |
+| Submitted orders                                                                                                                | Delete lines and order together before review/invoicing.                                                                                                                                        |
+| Reviewed orders, posted stock/production, invoices, payments, allocations, credits, overheads, published BOMs, ledger and audit | Retained as immutable/source-linked history. Protected rows show a disabled Delete control with the reason where listed; corrections use the existing adjustment/credit workflow.               |
+
+Immutable deletion tombstones retain source request keys so delayed retries cannot recreate deleted stock drafts or orders (HTTP 410). Repeated deletion is idempotent. Seeds respect deleted demo users, prices and extra catalogue products. Deletion of referenced records returns a clear conflict; it never cascades through posted history. Settings are updated through configuration, not deleted. Derived reports/dashboard/stock balances have no independent record to delete.
 
 ## Business rules
 
@@ -187,13 +217,14 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:review
 docker compose -p nova-demo up --build -d --wait app
 npm run test:smoke
 npm audit --audit-level=high
 npm audit --omit=dev --audit-level=high
 ```
 
-`npm ci` is the clean install step shown above. Both audit commands are expected to **fail** for the documented advisory; record their nonzero status rather than hiding it. Functional validation does not override that release gate. Vitest files run sequentially against the same isolated database. Playwright resets that database and starts a separate production server bound to loopback on port 3100. Smoke checks use the Docker app and seeded local password; they do not create business documents.
+`npm ci` is the clean install step shown above. Both audit commands are expected to **fail** for the documented advisory; record their nonzero status rather than hiding it. Functional validation does not override that release gate. Vitest files run sequentially against the same isolated database. Each Playwright command resets that database: workflow tests use a production server on loopback port 3100; the six-account role review uses a separate server on 3200. Run unit tests and both browser commands sequentially, never concurrently, because they share the isolated test database. The role review uses a separate process so sign-in rate counters do not carry over; no limiter is disabled. Smoke checks use the Docker app and seeded local password; they do not create business documents.
 
 `verify:system` creates a uniquely named disposable database through `TEST_DATABASE_URL`, migrates twice, runs/reruns the complete benchmark and generates every report/CSV/PDF, then drops only that database. The local role needs database-creation permission. Optional `-- --measure` builds synthetic load only in that disposable database, measures the allocation index and 5,000-row exports, and checks 5,001-row rejection. Stage 6 local measurements were about 677 ms versus 6.5 ms for the allocation lookup, 419 ms for the report, 36 ms for CSV and 51 ms for PDF. These are local synthetic timings, not throughput/peak-memory guarantees.
 
@@ -269,8 +300,22 @@ Follow-up validation on 18 November 2026 passed test-database migrations, lint, 
 
 ## Product imagery
 
-The illustrative product image is bundled at `public/images/murukku.webp`; the vector logo is at `public/images/pandian-stores-logo.svg`. The image was created with the built-in image-generation tool and encoded as WebP for local delivery. It depicts the product category and is not an actual photograph of a manufactured batch.
+The illustrative product images are bundled at `public/images/murukku.webp`, `mixture.webp`, `chips.webp` and `sweets.webp`; the vector logo is at `public/images/pandian-stores-logo.svg`. Images were created with the built-in image-generation tool and encoded as WebP for local delivery. Murukku imagery is shared between its pack sizes. These depict categories and are not photographs of manufactured batches.
 
 Generation prompt:
 
 > Use case: product-mockup. Asset type: product photograph for a local snack manufacturer management app named Pandian Stores. Primary request: a suitable illustrative product photograph of traditional South Indian murukku. Subject: several crisp golden-brown ridged spiral murukku snacks on a small matte black ceramic plate, naturally arranged, accurate crunchy rice-flour texture. Scene/backdrop: clean warm white surface and background, no clutter. Style: realistic studio food photography, soft daylight, restrained premium gold, white and black palette. Composition: square photograph, plate and whole murukku fully visible with generous clean space around the edges, suitable for both a catalog product card and a cropped login panel. Text: none. Constraints: no package label, no logos, no watermark, no people, no misleading brand or statutory markings.
+
+Additional catalogue image prompts (18 November 2026):
+
+**mixture.webp**
+
+> Use case: product-mockup. Create a realistic square studio food photograph for an illustrative South Indian snack catalogue: traditional spicy mixture with fine sev, boondi, roasted peanuts and crisp curry leaves, naturally heaped on a small matte black ceramic plate. Warm white clean background, soft daylight, crisp appetizing texture, restrained gold white black palette matching Pandian Stores. Entire plate visible with clean space around it. No packaging, no text, no logos, no watermark, no people. This is an illustrative category image, not a real manufactured batch.
+
+**chips.webp**
+
+> Use case: product-mockup. Create a realistic square studio food photograph for an illustrative South Indian snack catalogue: a natural heap of thin crisp golden banana chips on a small matte black ceramic plate. Warm white clean background, soft daylight, realistic crunchy slices, restrained gold white black palette matching Pandian Stores. Entire plate visible with clean space around it. No packaging, no text, no logos, no watermark, no people. This is an illustrative category image, not a real manufactured batch.
+
+**sweets.webp**
+
+> Use case: product-mockup. Create a realistic square studio food photograph for an illustrative South Indian sweets catalogue: a few golden Mysore pak squares and round laddus neatly arranged on a small matte black ceramic plate. Warm white clean background, soft daylight, realistic crumbly and smooth sweet textures, restrained gold white black palette matching Pandian Stores. Entire plate visible with clean space around it. No packaging, no text, no logos, no watermark, no people. This is an illustrative category image, not a real manufactured batch.

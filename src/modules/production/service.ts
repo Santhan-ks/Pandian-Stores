@@ -1,3 +1,4 @@
+import { assertRequestActive } from "../records/service";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -52,6 +53,7 @@ export async function createRun(
   const user = productionAccess(actor, true);
   const data = runInput.parse(input);
   return db.transaction(async (tx) => {
+    await assertRequestActive(tx, "stock", data.requestKey);
     const existing = await tx.execute(
       sql`SELECT id FROM nova.stock_documents WHERE request_key=${data.requestKey} AND payload=${JSON.stringify(data)}::jsonb AND created_by=${user.id}`,
     );

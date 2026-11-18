@@ -518,12 +518,7 @@ dd {
   display: block;
   border-radius: 50%;
 }
-.login-product figcaption {
-  text-align: center;
-  margin-top: 0.6rem;
-  color: #9a9f8c;
-  font-size: 0.62rem;
-}
+
 .login-story-footer {
   display: flex;
   justify-content: space-between;
@@ -815,4 +810,31 @@ p.variance-warning {
     margin-bottom: 0.8rem;
     font-size: 0.65rem;
   }
+}
+.delete-record {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.3rem 0;
+}
+.delete-record small {
+  display: block;
+  max-width: 28rem;
+  font-size: 0.7rem;
+}
+.delete-record [role="alert"] {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+}
+.delete-button:not(:disabled) {
+  color: #9e3028;
+  background: #fff8f5;
+  border-color: #e2bdb7;
+}
+
+.catalog-setup {
+  color: #806018 !important;
+  margin: 0.5rem 0 !important;
+  font-size: 0.7rem !important;
 }

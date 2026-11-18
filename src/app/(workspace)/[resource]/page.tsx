@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDatabase } from "@/lib/db/connection";
 import { pageActor } from "@/modules/auth/server";
-import { canWrite, canRead } from "@/modules/auth/policy";
+import { canWrite, canRead, canDelete } from "@/modules/auth/policy";
 import { schemas, type Resource } from "@/modules/catalog/validation";
 import { listMaster } from "@/modules/catalog/service";
 import { territories, products, user, userRoles } from "@/lib/db/schema";
@@ -102,6 +102,14 @@ export default async function MasterPage({
       label: p.name,
     }));
   const rows = await listMaster(db, actor, key);
+  const setup =
+    key === "products"
+      ? (
+          await db.execute(
+            sql`SELECT p.id,EXISTS(SELECT 1 FROM nova.product_prices x WHERE x.product_id=p.id) AS has_price,EXISTS(SELECT 1 FROM nova.bom_versions b WHERE b.product_id=p.id AND b.published_at IS NOT NULL AND b.active) AS has_bom FROM nova.products p`,
+          )
+        ).rows
+      : [];
   return (
     <>
       <h1>{key.charAt(0).toUpperCase() + key.slice(1)}</h1>
@@ -126,14 +134,18 @@ export default async function MasterPage({
       </p>
       {key === "products" && (
         <ProductGallery
-          products={
+          products={(
             rows as {
               id: string;
               name: string;
               packGrams: string;
               cartonCapacity: number;
             }[]
-          }
+          ).map((product) => ({
+            ...product,
+            hasPrice: !!setup.find((s) => s.id === product.id)?.has_price,
+            hasBom: !!setup.find((s) => s.id === product.id)?.has_bom,
+          }))}
         />
       )}
       {key === "products" && (
@@ -147,6 +159,7 @@ export default async function MasterPage({
         rows={JSON.parse(JSON.stringify(rows))}
         fields={fields[key]}
         writable={writable}
+        deletable={canDelete(actor.role)}
       />
     </>
   );

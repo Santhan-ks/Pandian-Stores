@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { BillingSettings, type BillingConfiguration } from "./billing-settings";
 import { SAMPLE_NOTICE } from "@/modules/billing/notice";
 import { useState } from "react";
+import { DeleteRecord } from "./delete-record";
 import type { Role } from "@/modules/auth/policy";
 import { Money as D, taxLine } from "@/modules/billing/tax";
 type Line = {
@@ -231,6 +232,21 @@ export function Sales({
           <p>
             Order {o.id} {o.reason && `— ${o.reason}`}
           </p>
+          {["admin", "owner"].includes(role) && (
+            <DeleteRecord
+              resource="orders"
+              id={o.id}
+              label={`${o.customer} order`}
+              protectedReason={
+                o.status !== "submitted"
+                  ? "Reviewed/invoiced orders are retained. Use the credit/correction workflow."
+                  : undefined
+              }
+              onDeleted={async () =>
+                setData(await (await fetch("/api/sales")).json())
+              }
+            />
+          )}
           <div
             className="table-scroll"
             tabIndex={0}
@@ -282,6 +298,14 @@ export function Sales({
                 ? "unknown (opening valuation unavailable)"
                 : `INR ${o.dispatch_cost}`}
             </p>
+          )}
+          {o.invoice_id && ["admin", "owner"].includes(role) && (
+            <DeleteRecord
+              resource="invoices"
+              id={o.invoice_id}
+              label={`invoice ${o.number}`}
+              protectedReason="Posted invoices cannot be deleted. Eligible invoices may receive a full credit."
+            />
           )}
           {admin && o.status === "submitted" && (
             <form
@@ -490,6 +514,14 @@ export function Sales({
         <p key={p.id}>
           {p.payment_date.slice(0, 10)} — {p.reference} — {p.method} — INR{" "}
           {p.amount}
+          {["admin", "owner"].includes(role) && (
+            <DeleteRecord
+              resource="payments"
+              id={p.id}
+              label={`payment ${p.reference}`}
+              protectedReason="Payments and their allocations are immutable accounting history."
+            />
+          )}
         </p>
       ))}
     </>

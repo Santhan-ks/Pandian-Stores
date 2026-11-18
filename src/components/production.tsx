@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { DeleteRecord } from "./delete-record";
 import { ProductionDecimal as D } from "@/modules/production/calculations";
 import { estimateMargin } from "@/modules/production/calculations";
 type Line = { itemId: string; item: string; quantity: string; unit: string };
@@ -93,12 +94,14 @@ export function Production({
   boms,
   history,
   writable,
+  deletable = false,
   prices,
 }: {
   runs: Run[];
   boms: BomChoice[];
   history: Overhead[];
   writable: boolean;
+  deletable?: boolean;
   prices: { productId: string; amount: string }[];
 }) {
   const router = useRouter();
@@ -344,6 +347,24 @@ export function Production({
             {run.product} · BOM {run.snapshot.revision} · {run.status} ·{" "}
             {run.id}
           </summary>
+          {deletable && (
+            <DeleteRecord
+              resource="production"
+              id={run.id}
+              label={`production run ${run.id}`}
+              protectedReason={
+                run.status === "posted"
+                  ? "Posted production is immutable; its ledger and costing must be retained."
+                  : history.some((o) => o.run_id === run.id)
+                    ? "Runs with overhead events cannot be deleted."
+                    : undefined
+              }
+              onDeleted={() => {
+                setEditing(null);
+                setKey(crypto.randomUUID());
+              }}
+            />
+          )}
           <p>
             {run.batches} batches · Expected {run.snapshot.expectedOutput} ·
             Accepted {run.good_output} packets · Posted{" "}

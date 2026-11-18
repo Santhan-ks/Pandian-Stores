@@ -7,6 +7,9 @@ export const roleNames = {
 } as const;
 export type Role = keyof typeof roleNames;
 export type Actor = { id: string; role: Role };
+export function canDelete(role: Role) {
+  return role === "admin" || role === "owner";
+}
 export class AccessError extends Error {
   constructor(
     public status: number,

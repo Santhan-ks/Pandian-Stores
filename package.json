@@ -22,7 +22,8 @@
     "db:seed:test": "tsx scripts/seed.ts --test",
     "test:smoke": "tsx scripts/smoke.ts",
     "test:e2e": "tsx scripts/prepare-e2e.ts && playwright test",
-    "verify:system": "tsx scripts/verify-system.ts"
+    "verify:system": "tsx scripts/verify-system.ts",
+    "test:review": "tsx scripts/prepare-review.ts && playwright test --config playwright.review.config.ts"
   },
   "dependencies": {
     "better-auth": "1.7.25",

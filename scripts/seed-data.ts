@@ -1,5 +1,5 @@
 import { hashPassword } from "better-auth/crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as s from "../src/lib/db/schema";
 import type { Database } from "../src/modules/catalog/service";
 import { unitDefinitions } from "../src/lib/units/convert";
@@ -18,6 +18,13 @@ export async function seedDemo(db: Database, password: string) {
     throw new Error("DEMO_PASSWORD must have at least 12 characters.");
   const hashed = await hashPassword(password);
   await db.transaction(async (tx) => {
+    const deleted = new Set(
+      (
+        await tx.execute(
+          sql`SELECT resource,record_id FROM nova.deleted_records WHERE resource IN ('users','prices')`,
+        )
+      ).rows.map((r) => `${r.resource}:${r.record_id}`),
+    );
     await tx
       .insert(s.roles)
       .values(Object.entries(roleNames).map(([code, name]) => ({ code, name })))
@@ -36,6 +43,7 @@ export async function seedDemo(db: Database, password: string) {
       .onConflictDoNothing();
     for (const [key, name, email, role] of demoUsers) {
       const id = "demo-" + key;
+      if (deleted.has("users:" + id)) continue;
       const [existing] = await tx
         .select()
         .from(s.user)
@@ -132,15 +140,16 @@ export async function seedDemo(db: Database, password: string) {
         cartonCapacity: 20,
       })
       .onConflictDoNothing();
-    await tx
-      .insert(s.productPrices)
-      .values({
-        id: "demo-price",
-        productId: "demo-murukku",
-        amount: "50.00",
-        gstPercent: "5.00",
-      })
-      .onConflictDoNothing();
+    if (!deleted.has("prices:demo-price"))
+      await tx
+        .insert(s.productPrices)
+        .values({
+          id: "demo-price",
+          productId: "demo-murukku",
+          amount: "50.00",
+          gstPercent: "5.00",
+        })
+        .onConflictDoNothing();
     const [existingBom] = await tx
       .select()
       .from(s.bomVersions)

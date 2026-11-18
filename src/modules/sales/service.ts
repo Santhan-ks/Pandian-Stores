@@ -1,3 +1,4 @@
+import { assertRequestActive } from "../records/service";
 import { sql } from "drizzle-orm";
 import { invoicePrefix } from "../../lib/brand";
 import { randomUUID } from "node:crypto";
@@ -76,6 +77,7 @@ export async function submitOrder(
   if (new Set(data.lines.map((l) => l.productId)).size !== data.lines.length)
     throw new AccessError(422, "Products must be unique.");
   return db.transaction(async (tx) => {
+    await assertRequestActive(tx, "orders", data.requestKey);
     const customer = (
       await tx.execute(
         sql`SELECT c.* FROM nova.customers c JOIN nova.territories t ON t.id=c.territory_id WHERE c.id=${data.customerId} AND (${user.role === "admin"} OR t.salesman_id=${user.id}) FOR UPDATE OF c`,

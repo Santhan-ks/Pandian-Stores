@@ -1,3 +1,4 @@
+import { lockUserManagement } from "../records/service";
 import { and, eq, desc, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as s from "../../lib/db/schema";
@@ -80,6 +81,14 @@ export async function saveMaster(
     let before: unknown = null;
     let saved: { id: string } | undefined;
     if (resource === "users") {
+      await lockUserManagement(tx);
+      const actualRole = (
+        await tx.execute(
+          sql`SELECT role FROM nova.user_roles WHERE user_id=${actor.id}`,
+        )
+      ).rows[0]?.role;
+      if (actualRole !== "admin")
+        throw new AccessError(403, "Administrator access is required.");
       const value = schemas.users.parse(input);
       if (!existingId && value.password.length < 12)
         throw new AccessError(
@@ -98,6 +107,23 @@ export async function saveMaster(
           .from(s.user)
           .innerJoin(s.userRoles, eq(s.user.id, s.userRoles.userId))
           .where(eq(s.user.id, existingId));
+        if (
+          (before as { role?: string } | undefined)?.role === "admin" &&
+          value.role !== "admin"
+        ) {
+          const count = Number(
+            (
+              await tx.execute(
+                sql`SELECT count(*)::int AS n FROM nova.user_roles WHERE role='admin'`,
+              )
+            ).rows[0].n,
+          );
+          if (count <= 1)
+            throw new AccessError(
+              409,
+              "The last administrator cannot lose their role.",
+            );
+        }
         [saved] = await tx
           .update(s.user)
           .set({ name: value.name, email: value.email, updatedAt: new Date() })
