@@ -29,6 +29,7 @@ export default async function WorkspaceLayout({
           <Link
             className="brand-link"
             href="/products"
+            prefetch={false}
             aria-label="Pandian Stores home"
           >
             <Brand />

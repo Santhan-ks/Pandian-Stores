@@ -21,6 +21,7 @@ export function WorkspaceNavigation({ resources }: { resources: string[] }) {
           aria-current={section === resource ? "page" : undefined}
           key={resource}
           href={"/" + resource}
+          prefetch={false}
         >
           <svg
             aria-hidden="true"

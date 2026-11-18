@@ -176,6 +176,9 @@ for (const person of cases) {
           page.getByText("Needs price and BOM configuration", { exact: true }),
         ).toHaveCount(4);
         for (const image of await page.locator(".product-card img").all()) {
+          // Native lazy loading may wait until an image approaches the viewport.
+          await image.scrollIntoViewIfNeeded();
+          await expect(image).toBeVisible();
           await expect
             .poll(() =>
               image.evaluate(

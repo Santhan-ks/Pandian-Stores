@@ -61,10 +61,14 @@ jobs:
       - run: npm run db:seed:test
       - run: npm run db:seed:test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-      - run: npm run test:review
-      - run: npm run test:cross
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - name: Run browser workflows sequentially
+        run: |
+          for browser in chromium firefox webkit; do
+            npm run test:e2e -- --browser="$browser"
+            npm run test:review -- --browser="$browser"
+            npm run test:cross -- --browser="$browser"
+          done
       - name: Check HTTP health
         env:
           DATABASE_URL: postgresql://nova:local_ci_password@localhost:5432/nova_test
