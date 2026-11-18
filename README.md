@@ -218,6 +218,7 @@ npm run build
 npx playwright install chromium
 npm run test:e2e
 npm run test:review
+npm run test:cross
 docker compose -p nova-demo up --build -d --wait app
 npm run test:smoke
 npm audit --audit-level=high
@@ -227,6 +228,8 @@ npm audit --omit=dev --audit-level=high
 `npm ci` is the clean install step shown above. Both audit commands are expected to **fail** for the documented advisory; record their nonzero status rather than hiding it. Functional validation does not override that release gate. Vitest files run sequentially against the same isolated database. Each Playwright command resets that database: workflow tests use a production server on loopback port 3100; the six-account role review uses a separate server on 3200. Run unit tests and both browser commands sequentially, never concurrently, because they share the isolated test database. The role review uses a separate process so sign-in rate counters do not carry over; no limiter is disabled. Smoke checks use the Docker app and seeded local password; they do not create business documents.
 
 `verify:system` creates a uniquely named disposable database through `TEST_DATABASE_URL`, migrates twice, runs/reruns the complete benchmark and generates every report/CSV/PDF, then drops only that database. The local role needs database-creation permission. Optional `-- --measure` builds synthetic load only in that disposable database, measures the allocation index and 5,000-row exports, and checks 5,001-row rejection. Stage 6 local measurements were about 677 ms versus 6.5 ms for the allocation lookup, 419 ms for the report, 36 ms for CSV and 51 ms for PDF. These are local synthetic timings, not throughput/peak-memory guarantees.
+
+`test:cross` prepares the same isolated `_test` benchmark and runs a separate loopback server on port **3400**. It checks the six accounts against a fixed write-permission matrix, foreign salesman identifiers/reports/PDFs, spoofed actor fields, cross-origin mutations, financial/ledger retry integrity and shared-browser logout/account switching. Its five cases passed 110 cross-role write denials and 97 cross-origin denials while preserving business state. Run it sequentially with unit tests, `test:e2e` and `test:review`; they share the test database. These are application access/workflow cross-checks using Chromium and HTTP requests, not Firefox/WebKit or cross-platform certification.
 
 Generate future ORM migrations with `npm run db:generate -- --name meaningful_name`, review/commit the SQL and metadata, and version custom SQL constraint changes as well. Never edit an applied migration. The workflow keeps a separate **blocking dependency-audit job** and an independent functional job, read-only token permissions and 15/30-minute limits. No Git remote is configured, no push is authorized and no real GitHub Actions pass is claimed.
 
