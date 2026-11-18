@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
+// A separate browser server keeps this profile regression from consuming the
+// workflow suite's shared IP login allowance. No rate limiter is disabled.
+
 test("tax preview follows selected seller profiles and preserves posted invoice state", async ({
   page,
 }) => {

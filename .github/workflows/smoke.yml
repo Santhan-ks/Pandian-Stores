@@ -69,8 +69,12 @@ jobs:
       - run: npm ci
       - name: Generate isolated test credentials
         run: |
-          echo "DEMO_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
-          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          demo_password=$(openssl rand -hex 24)
+          auth_secret=$(openssl rand -hex 32)
+          echo "::add-mask::$demo_password"
+          echo "::add-mask::$auth_secret"
+          echo "DEMO_PASSWORD=$demo_password" >> "$GITHUB_ENV"
+          echo "BETTER_AUTH_SECRET=$auth_secret" >> "$GITHUB_ENV"
       - run: npm run db:migrate:test
       - run: npm run verify:system
       - run: npm run lint
@@ -87,6 +91,7 @@ jobs:
             npm run test:e2e -- --browser="$browser"
             npm run test:review -- --browser="$browser"
             npm run test:cross -- --browser="$browser"
+            npm run test:billing -- --browser="$browser"
           done
       - name: Check HTTP health
         env:

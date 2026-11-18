@@ -25,6 +25,7 @@
     "verify:system": "tsx scripts/verify-system.ts",
     "test:review": "tsx scripts/prepare-review.ts && playwright test --config playwright.review.config.ts",
     "test:cross": "tsx scripts/prepare-review.ts && playwright test --config playwright.cross.config.ts",
+    "test:billing": "tsx scripts/prepare-e2e.ts && playwright test --config playwright.billing.config.ts",
     "production:init": "tsx scripts/production-local.ts init",
     "production:up": "tsx scripts/production-local.ts up",
     "production:status": "tsx scripts/production-local.ts status",

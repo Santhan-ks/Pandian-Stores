@@ -29,10 +29,10 @@ A terminal opens, starts Docker Desktop if its engine is stopped, starts the dem
 You can close the terminal after the login page opens. The containers keep running in the background. To stop them while keeping the database:
 
 ```powershell
-docker compose -p nitt stop
+docker compose -p pandian-stores stop
 ```
 
-The launcher uses the **`nitt`** Compose project, which is also used in the setup commands in this README. It reuses the existing database. It does not install dependencies, rebuild the app or load/reset benchmark records. Complete the first-time setup below before using it on a new computer.
+The launcher uses the **`pandian-stores`** Compose project, which is also used in the setup commands in this README. It reuses the existing database. It does not install dependencies, rebuild the app or load/reset benchmark records. Complete the first-time setup below before using it on a new computer.
 
 If your existing installation uses another project name, set `COMPOSE_PROJECT_NAME` in the terminal before launching, and use that same name in every Compose command:
 
@@ -48,8 +48,8 @@ For an automated startup without the final keypress, use `Start-Pandian-Stores.c
 Run these commands from the project folder:
 
 ```sh
-docker compose -p nitt up -d --no-build --wait db app
-docker compose -p nitt ps
+docker compose -p pandian-stores up -d --no-build --wait db app
+docker compose -p pandian-stores ps
 ```
 
 Then open [http://localhost:3000/login](http://localhost:3000/login). Both `app` and `db` should be healthy.
@@ -135,16 +135,16 @@ If you change ports, update both database URLs or the browser origin as appropri
 
 ### 2. Install, migrate and load the demonstration
 
-Run each command in order. **Stop if a command fails**, resolve the error, then continue. The project name `nitt` matches the Windows launcher.
+Run each command in order. **Stop if a command fails**, resolve the error, then continue. The project name `pandian-stores` matches the Windows launcher.
 
 ```sh
 npm ci
-docker compose -p nitt config --quiet
-docker compose -p nitt up -d --wait db
+docker compose -p pandian-stores config --quiet
+docker compose -p pandian-stores up -d --wait db
 npm run db:migrate
 npm run db:migrate:test
 npm run db:seed -- --sales --catalog
-docker compose -p nitt up --build -d --wait app
+docker compose -p pandian-stores up --build -d --wait app
 npm run test:smoke
 ```
 
@@ -174,19 +174,23 @@ This creates users, roles, territories, customers, materials, the benchmark prod
 
 Do not manually repeat a completed benchmark in the same database: those would be additional real transactions in that demonstration. Use a different Compose project **and unused ports with matching configuration** for an independent walkthrough. Keep working data rather than deleting its volume.
 
+### Docker names and preserved data
+
+The demo project is `pandian-stores`; its app image is `pandian-stores-app:local`, its containers are `pandian-stores-app-1` and `pandian-stores-db-1`, and its database volume is `pandian-stores_postgres_data`. Existing local data was copied from the stopped `nitt_postgres_data` volume. All 37 application/migration table counts and complete-row hashes matched before startup. The original volume remains as a recovery copy. SQL names (`nova`, `nova_test`, the `nova` schema and `NOVA_*` settings) and historical invoice snapshots remain unchanged for compatibility.
+
 ### Updating or troubleshooting the demo
 
 After changing source files, rebuild using the same project name:
 
 ```sh
-docker compose -p nitt up --build -d --wait app
+docker compose -p pandian-stores up --build -d --wait app
 ```
 
 Useful checks:
 
 ```sh
-docker compose -p nitt ps
-docker compose -p nitt logs --tail 80 app db
+docker compose -p pandian-stores ps
+docker compose -p pandian-stores logs --tail 80 app db
 npm run test:smoke
 ```
 
@@ -236,7 +240,7 @@ A **draft** is editable and does not change stock. **Post** is the finalization 
 
 The assessment defines exact business figures only for Murukku 200 g. The other 200 g category packs, their twenty-packet carton capacities and depicted varieties are documented exercise assumptions. No recipes, prices or opening quantities were invented for them. Unpriced products are excluded from order entry; production needs a published recipe.
 
-The gold, white and black interface uses a local SVG monogram and generated illustrative WebP snack images in `public/images/`. The images depict categories, not actual manufactured batches. Murukku pack sizes share an image. Image provenance and the original prompts are retained [at the end of this README](#image-provenance).
+The gold, white and black interface uses a local SVG monogram and generated illustrative WebP snack images in `public/images/`. The images depict categories, not actual manufactured batches. Murukku pack sizes share an image. See [image provenance](#image-provenance).
 
 ### Deleting a record
 
@@ -431,35 +435,36 @@ Install the engines once:
 npx playwright install chromium firefox webkit
 ```
 
-For each engine, run the three suites in order. For example:
+For each engine, run the four suites in order. For example:
 
 ```sh
 npm run test:e2e -- --browser=chromium
 npm run test:review -- --browser=chromium
 npm run test:cross -- --browser=chromium
+npm run test:billing -- --browser=chromium
 ```
 
-Repeat with `--browser=firefox`, then `--browser=webkit`. The suites use ports 3100, 3200 and 3400 respectively. The six-account review checks each role's tabs and reports. Cross tests check role-write restrictions, foreign salesman identifiers, origin checks, retries and account switching. They include 110 cross-role write denials and 97 cross-origin denials per engine while checking that business state is preserved.
+Repeat with `--browser=firefox`, then `--browser=webkit`. Workflow, role-review, cross-access and billing-profile suites use ports 3100, 3200, 3400 and 3300 respectively. Each starts a separate server so independent tests do not accumulate sign-in attempts against the same in-memory IP limit. No rate limiter is disabled. The six-account review checks each role's tabs and reports. Cross tests check role-write restrictions, foreign salesman identifiers, origin checks, retries and account switching. They include 110 cross-role write denials and 97 cross-origin denials per engine while checking that business state is preserved.
 
 ### Recorded validation
 
 The latest complete local validation on **19 November 2026** recorded:
 
-| Check                         | Result                                                                                                             |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Vitest with real PostgreSQL   | 78 tests passed across ten files                                                                                   |
-| Playwright                    | 54 executions passed: 18 cases across Chromium, Firefox and WebKit                                                 |
-| Workflow / role / cross cases | 7 / 6 / 5 per engine, with no retries                                                                              |
-| Code checks                   | Lint, formatting and TypeScript passed                                                                             |
-| Build and demo                | Production build, Docker build/readiness and HTTP smoke passed                                                     |
-| Fresh benchmark               | Stock, taxes, payments, costs, fourteen reports and CSV/PDF reconciliation passed                                  |
-| Hardened local rehearsal      | TLS/login, restricted database role, startup refusal checks, 200 TLS probes and encrypted populated restore passed |
-| npm audits                    | Full and production-only audits each reported zero vulnerabilities, exit 0                                         |
-| Hardened image scans          | **Failed**: app 5 high, database 6 high, proxy 8 high; zero critical                                               |
+| Check                                   | Result                                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Vitest with real PostgreSQL             | 78 tests passed across ten files                                                                                   |
+| Playwright                              | 57 executions passed: 19 cases across Chromium, Firefox and WebKit                                                 |
+| Workflow / role / cross / billing cases | 7 / 6 / 5 / 1 per engine, with no retries                                                                          |
+| Code checks                             | Lint, formatting and TypeScript passed                                                                             |
+| Build and demo                          | Production build, Docker build/readiness and HTTP smoke passed                                                     |
+| Fresh benchmark                         | Stock, taxes, payments, costs, fourteen reports and CSV/PDF reconciliation passed                                  |
+| Hardened local rehearsal                | TLS/login, restricted database role, startup refusal checks, 200 TLS probes and encrypted populated restore passed |
+| npm audits                              | Full and production-only audits each reported zero vulnerabilities, exit 0                                         |
+| Hardened image scans                    | **Failed**: app 5 high, database 6 high, proxy 8 high; zero critical                                               |
 
 The launcher was also tested by restarting a stopped app and running it again with the app already healthy.
 
-During this README/launcher review on 19 November 2026, 78 automated tests, all six Chromium role reviews, the six published logins against the running demo, fresh benchmark/report/export reconciliation, HTTP smoke, lint, formatting, TypeScript, the production build and both npm audits passed again. Local documentation links/headings were checked, and private environment values were absent from the edited documentation/launcher files. The earlier 54-execution browser matrix and hardened deployment checks are retained above as earlier same-day evidence; they were not repeated in full for this documentation edit.
+During this README/launcher review on 19 November 2026, 78 automated tests, all six Chromium role reviews, the six published logins against the running demo, fresh benchmark/report/export reconciliation, HTTP smoke, lint, formatting, TypeScript, the production build and both npm audits passed again. Local documentation links/headings were checked, and private environment values were absent from the edited documentation/launcher files. The subsequent clean GitHub clone recheck passed all 57 browser executions (including the new billing-profile case in each engine), all 78 database tests, lint/format/type checking, the production build, repeated seed and benchmark/report/export reconciliation. The earlier hardened deployment evidence remains separately recorded.
 
 These are local results, not a remote CI pass, physical-device certification, human usability study or production load guarantee. CI is configured for independent functional and blocking audit jobs. Security findings are not suppressed.
 
@@ -484,9 +489,9 @@ For a simple **unencrypted, local demo-only backup**:
 
 ```powershell
 New-Item -ItemType Directory -Force backups
-docker compose -p nitt exec -T db pg_dump -U nova -d nova --format=custom --file=/tmp/nova-backup.dump
+docker compose -p pandian-stores exec -T db pg_dump -U nova -d nova --format=custom --file=/tmp/nova-backup.dump
 if ($LASTEXITCODE -ne 0) { throw 'Backup failed' }
-docker compose -p nitt cp db:/tmp/nova-backup.dump ./backups/nova-backup.dump
+docker compose -p pandian-stores cp db:/tmp/nova-backup.dump ./backups/nova-backup.dump
 if ($LASTEXITCODE -ne 0) { throw 'Backup copy failed' }
 ```
 
@@ -502,6 +507,22 @@ Keep this file private and out of Git. The `backups/` directory is ignored. A su
 - **Tax:** rates, local GSTIN checks and review exports do not certify legal compliance, registration status or government-return readiness.
 - **Operations:** no proved off-host recovery, scheduled retention, external alert delivery or contractual recovery objectives.
 
-- 
+## Security status and deployment restriction
+
+**Public production deployment remains blocked.** Latest recorded full and production-only npm audits return zero vulnerabilities after withdrawal of **GHSA-fc5q-39xc-vjpf / CVE-2026-112366**. Earlier Stage 6 audits failed with sixteen/five high dependency entries. The unchanged matcher code still reproduces bounded denial-of-service behavior; advisory withdrawal is not a code patch. No attacker-controlled glob-pattern route was identified in the reviewed app; image optimization is disabled, configuration is trusted, access stays on loopback, and login/resource limits remain active. No patched Picomatch release was available in that review, and no forced upgrade or suppression was used.
+
+Recorded paths include `eslint-config-next@16.4.6 > @next/eslint-plugin-next@16.4.6 > fast-glob@3.3.1 > micromatch@4.0.8 > picomatch@2.3.2`, and `better-auth@1.7.25`'s optional `vitest@5.1.0` peer with `vite@8.3.8`, `tinyglobby@0.2.17`, `fdir@6.5.0` and `picomatch@4.0.7`. Next.js 16.4.6 also contains an unversioned bundled matcher. Isolated 41/33-character failing subjects exceeded the 1.5-second child-process limit. Complete paths, reproduction conditions, exposure assessment and mitigations remain in [docs/security-review.md](docs/security-review.md).
+
+The latest recorded hardened image scans still fail: **app five high, database six high, proxy eight high; zero critical**. These nineteen image-level entries represent nine CVE IDs. Resolve or independently adjudicate these findings and prove live TLS/DNS, protected off-host recovery, alerting and real business/tax settings before public release. Functional checks and a clean npm audit do not approve deployment.
+
+## Submission checklist
+
+Source and commit history are published at [Santhan-ks/Pandian-Stores](https://github.com/Santhan-ks/Pandian-Stores). The [two-page design note](docs/pandian-stores-design-note.pdf) meets the assessment page limit; the [complete architecture PDF](docs/pandian-stores-architecture.pdf) is supplementary. Both use the app's gold, white and black theme.
+
+The required **unlisted video of at most eight minutes** remains pending. It must show the exact benchmark in order, including mobile salesman and admin views; add its actual accessible link once recorded. Confirm the organizer's submission form/deadline. A localhost URL works only on the evaluator's own machine after setup and is not a hosted demo link.
+
+## Image provenance
+
+The local Murukku, Mixture, Chips and Sweets WebP illustrations were generated for this prototype and depict categories rather than actual manufactured batches. Both Murukku pack sizes share an image. The logo is a local SVG monogram. No product label, tax marking or manufactured-batch claim is implied.
 
 Thank You...
