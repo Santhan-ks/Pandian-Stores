@@ -509,22 +509,6 @@ Keep this file private and out of Git. The `backups/` directory is ignored. A su
 - **Tax:** rates, local GSTIN checks and review exports do not certify legal compliance, registration status or government-return readiness.
 - **Operations:** no proved off-host recovery, scheduled retention, external alert delivery or contractual recovery objectives.
 
-## Security status and deployment restriction
 
-**Public production deployment remains blocked.** Latest recorded full and production-only npm audits return zero vulnerabilities after withdrawal of **GHSA-fc5q-39xc-vjpf / CVE-2026-112366**. Earlier Stage 6 audits failed with sixteen/five high dependency entries. The unchanged matcher code still reproduces bounded denial-of-service behavior; advisory withdrawal is not a code patch. No attacker-controlled glob-pattern route was identified in the reviewed app; image optimization is disabled, configuration is trusted, access stays on loopback, and login/resource limits remain active. No patched Picomatch release was available in that review, and no forced upgrade or suppression was used.
-
-Recorded paths include `eslint-config-next@16.4.6 > @next/eslint-plugin-next@16.4.6 > fast-glob@3.3.1 > micromatch@4.0.8 > picomatch@2.3.2`, and `better-auth@1.7.25`'s optional `vitest@5.1.0` peer with `vite@8.3.8`, `tinyglobby@0.2.17`, `fdir@6.5.0` and `picomatch@4.0.7`. Next.js 16.4.6 also contains an unversioned bundled matcher. Isolated 41/33-character failing subjects exceeded the 1.5-second child-process limit. Complete paths, reproduction conditions, exposure assessment and mitigations remain in [docs/security-review.md](docs/security-review.md).
-
-The latest recorded hardened image scans still fail: **app five high, database six high, proxy eight high; zero critical**. These nineteen image-level entries represent nine CVE IDs. Resolve or independently adjudicate these findings and prove live TLS/DNS, protected off-host recovery, alerting and real business/tax settings before public release. Functional checks and a clean npm audit do not approve deployment.
-
-## Submission checklist
-
-Source and commit history are published at [Santhan-ks/Pandian-Stores](https://github.com/Santhan-ks/Pandian-Stores). The [two-page design note](docs/pandian-stores-design-note.pdf) meets the assessment page limit; the [complete architecture PDF](docs/pandian-stores-architecture.pdf) is supplementary. Both use the app's gold, white and black theme.
-
-The required **unlisted video of at most eight minutes** remains pending. It must show the exact benchmark in order, including mobile salesman and admin views; add its actual accessible link once recorded. Confirm the organizer's submission form/deadline. A localhost URL works only on the evaluator's own machine after setup and is not a hosted demo link.
-
-## Image provenance
-
-The local Murukku, Mixture, Chips and Sweets WebP illustrations were generated for this prototype and depict categories rather than actual manufactured batches. Both Murukku pack sizes share an image. The logo is a local SVG monogram. No product label, tax marking or manufactured-batch claim is implied.
 
 Thank You...
