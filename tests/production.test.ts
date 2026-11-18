@@ -19,6 +19,7 @@ import {
 import {
   ProductionDecimal as D,
   variance,
+  estimateMargin,
 } from "../src/modules/production/calculations";
 import { publishBom, getBom } from "../src/modules/catalog/bom";
 import { scaleBom, convert } from "../src/lib/units/convert";
@@ -32,6 +33,15 @@ if (
 const pool = new Pool({ connectionString: url });
 const db = drizzle(pool, { schema });
 const actor = { id: "demo-production", role: "production" } as const;
+test("run margin is an estimate against selling price and preserves unknown costs", () => {
+  const result = estimateMargin("50", new D("5855").div("188").toFixed());
+  expect(new D(result!.perPacket).toFixed(2)).toBe("18.86");
+  expect(new D(result!.percent).toFixed(2)).toBe("37.71");
+  expect(estimateMargin("50", null)).toBeNull();
+  expect(estimateMargin(null, "31")).toBeNull();
+  expect(estimateMargin("0", "31")).toBeNull();
+  expect(estimateMargin("20", "31")!.perPacket).toBe("-11");
+});
 beforeEach(async () => {
   await db.execute(
     sql`TRUNCATE nova.users,nova.roles,nova.units,nova.inventory_items,nova.territories CASCADE`,

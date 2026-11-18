@@ -17,3 +17,13 @@ export function variance(actual: string, expected: string, tolerance: string) {
       .gt(planned.abs().mul(tolerance)),
   };
 }
+
+export function estimateMargin(price: string | null, cost: string | null) {
+  if (price === null || cost === null || new ProductionDecimal(price).lte(0))
+    return null;
+  const perPacket = new ProductionDecimal(price).minus(cost);
+  return {
+    perPacket: perPacket.toFixed(),
+    percent: perPacket.mul(100).div(price).toFixed(),
+  };
+}

@@ -13,7 +13,7 @@ import { Money as D } from "../src/modules/billing/tax";
 export const exerciseInvoice = { date: "2026-11-17" };
 export const exerciseProfile = {
   mode: "demo" as const,
-  name: "Exercise-only manufacturer",
+  name: "Pandian Stores (fictional demo)",
   address: "Invented exercise address, Tamil Nadu",
   state: "Tamil Nadu" as const,
   gstin: "DEMO-NOT-A-GSTIN",

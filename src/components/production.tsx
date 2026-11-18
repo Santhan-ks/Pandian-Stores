@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProductionDecimal as D } from "@/modules/production/calculations";
+import { estimateMargin } from "@/modules/production/calculations";
 type Line = { itemId: string; item: string; quantity: string; unit: string };
 export type BomChoice = {
   id: string;
@@ -64,16 +65,41 @@ export type Overhead = {
 };
 const money = (v: string | null) =>
   v === null ? "Unavailable" : new D(v).toFixed(2);
+function RunMargin({
+  price,
+  cost,
+}: {
+  price: string | null;
+  cost: string | null;
+}) {
+  const margin = estimateMargin(price, cost);
+  return (
+    <p className="cost-note">
+      Estimated margin per packet vs current selling price:{" "}
+      {margin ? (
+        <>
+          INR {money(margin.perPacket)} ({money(margin.percent)}%), before tax.
+        </>
+      ) : (
+        "Unavailable."
+      )}{" "}
+      This compares the selected run cost with the current price; it is not
+      realized dispatch profit.
+    </p>
+  );
+}
 export function Production({
   runs,
   boms,
   history,
   writable,
+  prices,
 }: {
   runs: Run[];
   boms: BomChoice[];
   history: Overhead[];
   writable: boolean;
+  prices: { productId: string; amount: string }[];
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -323,7 +349,11 @@ export function Production({
             Accepted {run.good_output} packets · Posted{" "}
             {run.posted_at ?? "Not yet"}
           </p>
-          <p>
+          <p
+            className={
+              run.snapshot.yield.flagged ? "variance-warning" : undefined
+            }
+          >
             Yield variance: {run.snapshot.yield.percent ?? "Not defined"}%{" "}
             {run.snapshot.yield.flagged ? "— Alert" : ""} · tolerance{" "}
             {run.tolerance}%
@@ -354,7 +384,7 @@ export function Production({
                     <td>{l.actual}</td>
                     <td>{l.damaged}</td>
                     <td>{l.unit}</td>
-                    <td>
+                    <td className={l.flagged ? "variance-warning" : undefined}>
                       {l.percent ?? "Not defined"} {l.flagged ? "Alert" : ""}
                     </td>
                     <td>
@@ -373,6 +403,12 @@ export function Production({
             {money(run.overheads)} · Run total: INR {money(run.total_cost)} ·
             Cost per good packet: INR {money(run.cost_per_packet)}
           </p>
+          <RunMargin
+            price={
+              prices.find((p) => p.productId === run.product_id)?.amount ?? null
+            }
+            cost={run.cost_per_packet}
+          />
           <p>
             Run cost is separate from aggregate finished inventory valuation,
             which can remain unknown because of opening stock. Finished receipt

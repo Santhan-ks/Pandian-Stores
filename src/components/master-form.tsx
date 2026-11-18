@@ -23,6 +23,19 @@ export function MasterEditor({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [key, setKey] = useState(0);
+  const [query, setQuery] = useState("");
+  const visibleRows = rows.filter((row) =>
+    fields.some((field) =>
+      String(
+        field.options?.find((option) => option.value === row[field.key])
+          ?.label ??
+          row[field.key] ??
+          "",
+      )
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+    ),
+  );
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -44,6 +57,7 @@ export function MasterEditor({
       }
       if (!response.ok) throw new Error(result.error);
       setEditing(null);
+      setQuery("");
       setKey((k) => k + 1);
       router.refresh();
     } catch (error) {
@@ -54,7 +68,20 @@ export function MasterEditor({
   }
   return (
     <>
-      {!rows.length && <p>No records yet.</p>}
+      <div className="directory-tools">
+        <label>
+          Search records
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search this directory…"
+          />
+        </label>
+        <span>
+          {visibleRows.length} of {rows.length} records
+        </span>
+      </div>
       <div
         className="table-scroll"
         tabIndex={0}
@@ -71,7 +98,7 @@ export function MasterEditor({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {visibleRows.map((row) => (
               <tr key={String(row.id)}>
                 {fields.map((f) => (
                   <td key={f.key}>
@@ -97,7 +124,11 @@ export function MasterEditor({
           </tbody>
         </table>
       </div>
-      {rows.length === 0 && <p>No records yet.</p>}
+      {visibleRows.length === 0 && (
+        <p>
+          {rows.length ? "No records match your search." : "No records yet."}
+        </p>
+      )}
       {writable && (
         <section>
           <h2>{editing ? "Edit record" : "Add record"}</h2>

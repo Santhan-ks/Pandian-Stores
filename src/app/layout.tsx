@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import { businessName } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: { default: "NOVA", template: "%s | NOVA" },
-  description: "Manufacturing operations",
+  title: { default: businessName, template: `%s | ${businessName}` },
+  description:
+    "Pandian Stores manufacturing, orders, stock and accounts workspace",
+  icons: { icon: "/images/pandian-stores-logo.svg" },
 };
 
 export default function RootLayout({

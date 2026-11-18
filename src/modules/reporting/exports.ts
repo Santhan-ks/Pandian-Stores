@@ -69,7 +69,7 @@ export function reportCsv(report: Report) {
 }
 export function reportPdf(report: Report) {
   const header = [
-    `NOVA - ${report.title}`,
+    `${businessName} - ${report.title}`,
     `${report.filters.from} through ${report.filters.to}; as of ${report.filters.asOf}`,
     `Scope: ${report.filters.scope === "demo" ? "DEMONSTRATION ONLY - NOT STATUTORY SALES" : "Real invoices"}; ${report.timezone}; INR`,
   ];
@@ -91,3 +91,4 @@ export function reportPdf(report: Report) {
   report.notes.forEach(append);
   return textPdf(rows, header);
 }
+import { businessName } from "../../lib/brand";

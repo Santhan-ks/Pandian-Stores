@@ -4,6 +4,7 @@ import { getDatabase } from "@/lib/db/connection";
 import { currentActor } from "@/modules/auth/server";
 import { getDashboard } from "@/modules/reporting/dashboard";
 import { ReportTable } from "@/components/report-table";
+import { Money as D } from "@/modules/billing/tax";
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -25,6 +26,38 @@ export default async function DashboardPage({
   return (
     <>
       <h1>Owner dashboard</h1>
+      <p className="page-description">
+        A clear view of orders, stock and collections. All figures come from
+        your posted records.
+      </p>
+      <div className="metric-grid">
+        <Link className="metric-card" href={link("orders", data.today)}>
+          <span>Orders today</span>
+          <strong>{data.submittedToday}</strong>
+          <small>Submitted on the business date</small>
+        </Link>
+        <Link className="metric-card" href={link("orders", "0001-01-01")}>
+          <span>Awaiting approval</span>
+          <strong>{data.pendingApprovals}</strong>
+          <small>Orders ready for admin review</small>
+        </Link>
+        <Link className="metric-card" href={link("sales")}>
+          <span>Invoiced this month</span>
+          <strong>
+            INR {new D(data.sales.totals.total ?? "0").toFixed(2)}
+          </strong>
+          <small>
+            {scope === "demo" ? "Demonstration invoices" : "Real invoices only"}
+          </small>
+        </Link>
+        <Link className="metric-card" href={link("customer_balances")}>
+          <span>Customer outstanding</span>
+          <strong>
+            INR {new D(data.receivables.totals.outstanding ?? "0").toFixed(2)}
+          </strong>
+          <small>Receivables as of today</small>
+        </Link>
+      </div>
       <form method="get">
         <label>
           Financial invoice scope

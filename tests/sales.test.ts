@@ -459,7 +459,8 @@ test("sample issuance is explicitly enabled and visibly labelled; real rates rem
     await db.execute(
       sql`SELECT snapshot FROM nova.invoices WHERE id=${realInvoice}`,
     )
-  ).rows[0].snapshot as { lines: Record<string, string>[] };
+  ).rows[0].snapshot as { number: string; lines: Record<string, string>[] };
+  expect(realSnapshot.number).toMatch(/^PANDIAN\/2026-27\//);
   expect(realSnapshot.lines[0]).toMatchObject({
     gstPercent: "12.00",
     cgst: "30.00",

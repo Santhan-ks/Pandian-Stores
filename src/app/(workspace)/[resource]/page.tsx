@@ -7,6 +7,7 @@ import { schemas, type Resource } from "@/modules/catalog/validation";
 import { listMaster } from "@/modules/catalog/service";
 import { territories, products, user, userRoles } from "@/lib/db/schema";
 import { MasterEditor, type Field } from "@/components/master-form";
+import { ProductGallery } from "@/components/product-gallery";
 export default async function MasterPage({
   params,
 }: {
@@ -104,6 +105,37 @@ export default async function MasterPage({
   return (
     <>
       <h1>{key.charAt(0).toUpperCase() + key.slice(1)}</h1>
+      <p className="page-description">
+        {
+          (
+            {
+              users: "Manage your team and their access to the workspace.",
+              customers:
+                "Your customer directory and assigned sales territories.",
+              territories:
+                "Connect each sales territory with the right salesman.",
+              suppliers: "The suppliers behind your materials and purchases.",
+              materials:
+                "Raw ingredients and packaging, with consistent base units.",
+              products:
+                "Your finished products, pack sizes and carton details.",
+              prices: "Selling prices and configurable product tax rates.",
+            } as const
+          )[key]
+        }
+      </p>
+      {key === "products" && (
+        <ProductGallery
+          products={
+            rows as {
+              id: string;
+              name: string;
+              packGrams: string;
+              cartonCapacity: number;
+            }[]
+          }
+        />
+      )}
       {key === "products" && (
         <p>
           Create a separate product for each pack size. Pack size and carton

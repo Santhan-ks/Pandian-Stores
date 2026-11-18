@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       return new Response(reportCsv(report), {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="nova-${kind}-${report.filters.scope}.csv"`,
+          "Content-Disposition": `attachment; filename="pandian-stores-${kind}-${report.filters.scope}.csv"`,
           "Cache-Control": "no-store",
         },
       });
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       return new Response(new Uint8Array(reportPdf(report)), {
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="nova-${kind}-${report.filters.scope}.pdf"`,
+          "Content-Disposition": `attachment; filename="pandian-stores-${kind}-${report.filters.scope}.pdf"`,
           "Cache-Control": "no-store",
         },
       });

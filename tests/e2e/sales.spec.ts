@@ -84,7 +84,7 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
         path: "test-results/stage6-tablet.png",
         fullPage: true,
       });
-    await expect(page).toHaveTitle(/\| NOVA$/);
+    await expect(page).toHaveTitle(/\| Pandian Stores$/);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth + 1,
@@ -189,14 +189,14 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   const csvDownload = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download CSV", exact: true }).click();
   const csvFile = await csvDownload;
-  expect(csvFile.suggestedFilename()).toBe("nova-sales-demo.csv");
+  expect(csvFile.suggestedFilename()).toBe("pandian-stores-sales-demo.csv");
   const csv = readFileSync((await csvFile.path())!, "utf8");
   expect(csv).toContain('"7875.00"');
   expect(csv).toContain("DEMONSTRATION ONLY");
   const reportDownload = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download PDF", exact: true }).click();
   const reportFile = await reportDownload;
-  expect(reportFile.suggestedFilename()).toBe("nova-sales-demo.pdf");
+  expect(reportFile.suggestedFilename()).toBe("pandian-stores-sales-demo.pdf");
   expect(readFileSync((await reportFile.path())!).toString("latin1")).toContain(
     "7875.00",
   );
@@ -204,7 +204,9 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   await expect(
     page.getByRole("heading", { name: "Owner dashboard", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("INR 7875.00", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Invoiced this month INR 7875\.00/ }),
+  ).toBeVisible();
   const denied = await page.request.get(
     "/api/reports?kind=stock&format=csv&from=2026-11-01&to=2026-11-30&asOf=2026-11-30",
   );

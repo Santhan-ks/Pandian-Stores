@@ -4,9 +4,9 @@ This is a recording plan and interview aid, not a recorded video. Public product
 
 ## Prepare the recording
 
-1. Follow the README setup with a new Compose project and unused loopback ports if another NOVA instance is running. Keep the same project name in every command. Do not reuse or erase working business data.
+1. Follow the README setup with a new Compose project and unused loopback ports if another Pandian Stores instance is running. Keep the same project name in every command. Do not reuse or erase working business data.
 2. For a manual walkthrough, run `npm run db:seed` without checkpoint flags on that fresh database. This creates masters and the published BOM, with no opening stock or transactions. Do not run `--sales` first; that would complete the workflow before filming.
-3. Set the private local demo password, seed opt-in and demo-invoice opt-in as described in the README. Verify login for admin, both salesmen, supervisor and auditor. Hide password entry, environment files, cookies and database URLs during recording. Do not publish credentials with the submission.
+3. Set the local demo password, seed opt-in and demo-invoice opt-in as described in the README. Verify login for admin, both salesmen, supervisor and auditor. Hide password entry, environment files, cookies and database URLs during recording. The README publishes the fictional local test password; operational credentials and authentication/database secrets must remain private.
 4. Create the fictional supplier in Suppliers: name `Demo flour supplier (invented)`, Tamil Nadu, with an explicitly invented address. Configure the **demo** business profile in Sales using fictional manufacturer name/address, Tamil Nadu, `DEMO-NOT-A-GSTIN` and exercise-only HSN `1905` for Murukku. Leave the real profile unconfigured. This preparation creates no stock movement or invoice.
 5. Confirm Murukku **200 g**, INR 50 before the assumed 5% tax, 20 packets/carton, and published revision 1. Its one-batch plan is flour 40 kg, oil 10 L, spice 1.2 kg, pouches 200 pieces and cartons ten pieces; expected output is 200 packets.
 6. Use a desktop window for admin/supervisor, a 360 px browser viewport for the salesman shot, and an auditor/owner login for the final read-only view. Rehearse role switches; reuse existing authorized sessions where practical rather than repeatedly hitting login limits. Use only the real application, not edited mock screens.
@@ -54,7 +54,7 @@ The times below are a plan, not measured recording durations. Allow a 20-second 
 
 | Time      | Screen/action                                     | Suggested narration and evidence                                                                                                               |
 | --------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0:00-0:30 | Local login, role/navigation overview             | "NOVA links orders to production, stock and audit records. This is an isolated local exercise." Show assigned role; hide password.             |
+| 0:00-0:30 | Local login, role/navigation overview             | "Pandian Stores links orders to production, stock and audit records. This is an isolated local exercise." Show assigned role; hide password.   |
 | 0:30-1:20 | Admin opening document and posting                | Show all six opening lines, unknown finished valuation, and immutable-post confirmation.                                                       |
 | 1:20-1:50 | Flour purchase and stock summary                  | "Sixty kilograms at 45 adds 2,700. The moving average is 43.125 per kilogram."                                                                 |
 | 1:50-3:10 | Supervisor production draft/posting and overheads | Show revision 1, actual inputs/damage, 188 good packets, oil/yield alerts, material cost, labour/utilities and 31.14 displayed unit cost.      |

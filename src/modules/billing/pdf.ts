@@ -3,7 +3,9 @@ import { SAMPLE_NOTICE } from "./notice";
 // A small text-only PDF writer for invoice snapshots. Byte offsets use the same ASCII encoding as the stream.
 export function invoicePdf(snapshot: Record<string, unknown>): Buffer {
   const rows: string[] = [
-    snapshot.mode === "real" ? "NOVA - TAX INVOICE" : SAMPLE_NOTICE,
+    snapshot.mode === "real"
+      ? `${businessName} - TAX INVOICE`
+      : `${businessName} - ${SAMPLE_NOTICE}`,
     snapshot.mode === "real"
       ? "Amounts in INR"
       : "Exercise GST assumption; amounts in INR",
@@ -40,3 +42,4 @@ export function invoicePdf(snapshot: Record<string, unknown>): Buffer {
   row(`Invoice total INR: ${snapshot.total}`);
   return textPdf(rows);
 }
+import { businessName } from "../../lib/brand";

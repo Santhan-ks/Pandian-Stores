@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { invoicePrefix } from "../../lib/brand";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Database } from "../catalog/service";
@@ -270,7 +271,7 @@ async function issueConfiguredInvoice(
         sql`INSERT INTO nova.invoice_sequences(financial_year,last_number) VALUES(${sequenceKey},1) ON CONFLICT(financial_year) DO UPDATE SET last_number=nova.invoice_sequences.last_number+1 RETURNING last_number`,
       )
     ).rows[0];
-    const number = `${mode === "demo" ? "SAMPLE" : "NOVA"}/${fy}/${String(seq.last_number).padStart(5, "0")}`;
+    const number = `${mode === "demo" ? "SAMPLE" : invoicePrefix}/${fy}/${String(seq.last_number).padStart(5, "0")}`;
     const invoiceId = randomUUID();
     const snapshot = {
       seller,

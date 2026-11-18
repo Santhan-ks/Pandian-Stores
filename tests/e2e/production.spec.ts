@@ -78,6 +78,9 @@ test("production supervisor posts benchmark and adds overheads; auditor sees rea
   await run.getByRole("button", { name: "Add overhead", exact: true }).click();
   await expect(run.getByText(/Run total: INR 5855.00/)).toBeVisible();
   await expect(run.getByText(/Cost per good packet: INR 31.14/)).toBeVisible();
+  await expect(
+    run.getByText(/Estimated margin per packet.*18.86.*37.71/),
+  ).toBeVisible();
   await expect(run.getByText(/Yield variance: -6%/)).toBeVisible();
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/login/);

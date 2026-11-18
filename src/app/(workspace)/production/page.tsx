@@ -1,7 +1,7 @@
 import { getDatabase } from "@/lib/db/connection";
 import { pageActor } from "@/modules/auth/server";
 import { listRuns, overheadHistory } from "@/modules/production/service";
-import { listBoms } from "@/modules/catalog/service";
+import { listBoms, listMaster } from "@/modules/catalog/service";
 import { getBom } from "@/modules/catalog/bom";
 import {
   Production,
@@ -21,6 +21,12 @@ export default async function Page() {
   return (
     <Production
       writable={["admin", "production"].includes(actor.role)}
+      prices={
+        JSON.parse(JSON.stringify(await listMaster(db, actor, "prices"))) as {
+          productId: string;
+          amount: string;
+        }[]
+      }
       runs={JSON.parse(JSON.stringify(await listRuns(db, actor))) as Run[]}
       boms={JSON.parse(JSON.stringify(boms)) as BomChoice[]}
       history={
