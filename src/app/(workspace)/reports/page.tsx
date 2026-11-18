@@ -43,7 +43,9 @@ export default async function ReportsPage({
           <p role="alert">
             Invalid report filters: {e.issues.map((i) => i.message).join("; ")}
           </p>
-          <Link href="/reports">Reset filters</Link>
+          <Link prefetch={false} href="/reports">
+            Reset filters
+          </Link>
         </>
       );
     throw e;

@@ -8,6 +8,25 @@ permissions:
   contents: read
 
 jobs:
+  hardened-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run production:init
+      - run: npm run production:up -- --bootstrap
+      - run: npm run production:verify
+      - run: npm run production:recovery-drill
+      - name: Stop the isolated rehearsal
+        if: always()
+        run: npm run production:stop
+
   dependency-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 15

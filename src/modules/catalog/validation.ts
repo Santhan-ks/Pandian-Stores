@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Decimal } from "decimal.js";
+import { productionMode, safeProductionPassword } from "../../lib/config";
 const name = z.string().trim().min(1).max(160);
 const id = z.string().min(1).max(100);
 export const quantity = z
@@ -17,7 +18,13 @@ export const schemas = {
   users: z
     .object({
       name,
-      email: z.email().toLowerCase(),
+      email: z
+        .email()
+        .toLowerCase()
+        .refine(
+          (v) => !productionMode() || !v.endsWith("@example.test"),
+          "Demo email addresses cannot be used in production.",
+        ),
       role: z.enum(["salesman", "admin", "production", "auditor", "owner"]),
       password: z
         .string()
@@ -25,6 +32,10 @@ export const schemas = {
         .refine(
           (v) => v.length === 0 || v.length >= 12,
           "Use at least 12 characters.",
+        )
+        .refine(
+          (v) => !productionMode() || v === "" || safeProductionPassword(v),
+          "Production passwords require at least 16 characters and cannot use published demo/common values.",
         ),
     })
     .strict(),

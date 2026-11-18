@@ -24,7 +24,16 @@
     "test:e2e": "tsx scripts/prepare-e2e.ts && playwright test",
     "verify:system": "tsx scripts/verify-system.ts",
     "test:review": "tsx scripts/prepare-review.ts && playwright test --config playwright.review.config.ts",
-    "test:cross": "tsx scripts/prepare-review.ts && playwright test --config playwright.cross.config.ts"
+    "test:cross": "tsx scripts/prepare-review.ts && playwright test --config playwright.cross.config.ts",
+    "production:init": "tsx scripts/production-local.ts init",
+    "production:up": "tsx scripts/production-local.ts up",
+    "production:status": "tsx scripts/production-local.ts status",
+    "production:verify": "tsx scripts/production-verify.ts",
+    "production:stop": "tsx scripts/production-local.ts stop",
+    "production:backup": "tsx scripts/production-local.ts backup",
+    "production:recovery-drill": "tsx scripts/production-local.ts recovery-drill",
+    "production:restore-check": "tsx scripts/production-local.ts restore-check",
+    "production:rotate-password": "tsx scripts/production-local.ts rotate-password"
   },
   "dependencies": {
     "better-auth": "1.7.25",

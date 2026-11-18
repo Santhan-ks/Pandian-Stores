@@ -1,0 +1,15 @@
+FROM postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7 AS prepared
+RUN apk upgrade --no-cache && rm /usr/local/bin/gosu
+# Copy the prepared filesystem into a single runtime layer so the removed gosu
+# executable is also absent from distributed parent layers. Preserve the pinned
+# upstream runtime contract; update these version fields with the base digest.
+FROM scratch
+COPY --from=prepared / /
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    LANG=en_US.utf8 PG_MAJOR=17 PG_VERSION=17.12 PGDATA=/var/lib/postgresql/data
+VOLUME /var/lib/postgresql/data
+USER postgres
+EXPOSE 5432
+STOPSIGNAL SIGINT
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["postgres"]

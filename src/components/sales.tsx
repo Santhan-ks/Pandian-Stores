@@ -31,7 +31,12 @@ type Order = {
   dispatch_cost: string | null;
   issuance_mode: "demo" | "real";
   credited: boolean;
-  snapshot: { total: string; notice?: string };
+  snapshot: {
+    total: string;
+    notice?: string;
+    seller?: { state: string };
+    placeOfSupply?: string;
+  };
 };
 type Payment = {
   id: string;
@@ -57,12 +62,48 @@ export function Sales({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(prices[0]?.productId ?? "");
+  const [invoiceModes, setInvoiceModes] = useState<
+    Record<string, "real" | "demo">
+  >({});
   const [basket, setBasket] = useState<
     { productId: string; quantity: string; rate: string }[]
   >([]);
   const router = useRouter();
   const [failed, setFailed] = useState(false);
   const admin = role === "admin";
+  function invoiceMode(order: Order): "real" | "demo" {
+    if (order.invoice_id) return order.issuance_mode;
+    return (
+      invoiceModes[order.id] ??
+      (billing?.profiles.some((profile) => profile.mode === "real")
+        ? "real"
+        : billing?.demoEnabled &&
+            billing.profiles.some((profile) => profile.mode === "demo")
+          ? "demo"
+          : "real")
+    );
+  }
+  function taxPreview(order: Order, line: Line) {
+    const sellerState = order.invoice_id
+      ? order.snapshot.seller?.state
+      : billing?.profiles.find((profile) => profile.mode === invoiceMode(order))
+          ?.state;
+    if (!sellerState)
+      return admin
+        ? `Configure the ${invoiceMode(order)} seller profile to preview tax.`
+        : "Tax treatment is confirmed when invoiced.";
+    const supplyState = order.invoice_id
+      ? (order.snapshot.placeOfSupply ?? order.state)
+      : order.state;
+    const tax = taxLine(
+      line.quantity,
+      line.rate,
+      line.gstPercent,
+      sellerState,
+      supplyState,
+    );
+    return `${new D(tax.igst).gt(0) ? "IGST" : "CGST + SGST"} (${sellerState} seller)`;
+  }
   async function send(query: string, body: unknown, form?: HTMLFormElement) {
     if (
       query.startsWith("?dispatch=") &&
@@ -247,6 +288,25 @@ export function Sales({
               }
             />
           )}
+          {admin && !o.invoice_id && (
+            <label>
+              Invoice mode
+              <select
+                value={invoiceMode(o)}
+                onChange={(event) =>
+                  setInvoiceModes({
+                    ...invoiceModes,
+                    [o.id]: event.target.value as "real" | "demo",
+                  })
+                }
+              >
+                <option value="real">Real application invoice</option>
+                {billing?.demoEnabled && (
+                  <option value="demo">Sample exercise invoice</option>
+                )}
+              </select>
+            </label>
+          )}
           <div
             className="table-scroll"
             tabIndex={0}
@@ -272,20 +332,7 @@ export function Sales({
                     <td>{l.rate}</td>
                     <td>{new D(l.onHand).toFixed()}</td>
                     <td>{new D(l.shortage).toFixed()}</td>
-                    <td>
-                      {new D(
-                        taxLine(
-                          l.quantity,
-                          l.rate,
-                          l.gstPercent,
-                          "Tamil Nadu",
-                          o.state,
-                        ).igst,
-                      ).gt(0)
-                        ? "IGST"
-                        : "CGST + SGST"}{" "}
-                      (Tamil Nadu seller)
-                    </td>
+                    <td>{taxPreview(o, l)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -386,15 +433,7 @@ export function Sales({
                 Invoice date
                 <input name="date" type="date" defaultValue={date()} required />
               </label>
-              <label>
-                Invoice mode
-                <select name="mode">
-                  <option value="real">Real application invoice</option>
-                  {billing?.demoEnabled && (
-                    <option value="demo">Sample exercise invoice</option>
-                  )}
-                </select>
-              </label>
+              <input type="hidden" name="mode" value={invoiceMode(o)} />
               <p>
                 Seller and product HSNs come from the selected business profile.
                 Sample exercise invoices are not valid for tax purposes.

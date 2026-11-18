@@ -6,6 +6,7 @@ import { getDatabase } from "@/lib/db/connection";
 import { userRoles } from "@/lib/db/schema";
 import { createAuth } from "./auth";
 import { AccessError, type Actor, type Role } from "./policy";
+import { setting } from "@/lib/config";
 
 let auth: ReturnType<typeof createAuth> | undefined;
 export async function pageActor() {
@@ -21,7 +22,7 @@ export function getAuth() {
   if (!auth)
     auth = createAuth(
       getDatabase(),
-      process.env.BETTER_AUTH_SECRET ?? "",
+      setting("BETTER_AUTH_SECRET") ?? "",
       process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
     );
   return auth;

@@ -31,17 +31,25 @@ export default async function DashboardPage({
         your posted records.
       </p>
       <div className="metric-grid">
-        <Link className="metric-card" href={link("orders", data.today)}>
+        <Link
+          prefetch={false}
+          className="metric-card"
+          href={link("orders", data.today)}
+        >
           <span>Orders today</span>
           <strong>{data.submittedToday}</strong>
           <small>Submitted on the business date</small>
         </Link>
-        <Link className="metric-card" href={link("orders", "0001-01-01")}>
+        <Link
+          prefetch={false}
+          className="metric-card"
+          href={link("orders", "0001-01-01")}
+        >
           <span>Awaiting approval</span>
           <strong>{data.pendingApprovals}</strong>
           <small>Orders ready for admin review</small>
         </Link>
-        <Link className="metric-card" href={link("sales")}>
+        <Link prefetch={false} className="metric-card" href={link("sales")}>
           <span>Invoiced this month</span>
           <strong>
             INR {new D(data.sales.totals.total ?? "0").toFixed(2)}
@@ -50,7 +58,11 @@ export default async function DashboardPage({
             {scope === "demo" ? "Demonstration invoices" : "Real invoices only"}
           </small>
         </Link>
-        <Link className="metric-card" href={link("customer_balances")}>
+        <Link
+          prefetch={false}
+          className="metric-card"
+          href={link("customer_balances")}
+        >
           <span>Customer outstanding</span>
           <strong>
             INR {new D(data.receivables.totals.outstanding ?? "0").toFixed(2)}
@@ -78,12 +90,12 @@ export default async function DashboardPage({
       <section>
         <h2>Orders</h2>
         <p>
-          <Link href={link("orders", data.today)}>
+          <Link prefetch={false} href={link("orders", data.today)}>
             Orders submitted today: {data.submittedToday}
           </Link>
         </p>
         <p>
-          <Link href={link("orders", "0001-01-01")}>
+          <Link prefetch={false} href={link("orders", "0001-01-01")}>
             Pending approvals: {data.pendingApprovals}
           </Link>
         </p>
@@ -91,13 +103,19 @@ export default async function DashboardPage({
       <section>
         <h2>Month invoiced sales (gross)</h2>
         <p>INR {data.sales.totals.total}</p>
-        <Link href={link("sales")}>Sales register</Link>
+        <Link prefetch={false} href={link("sales")}>
+          Sales register
+        </Link>
         {" · "}
-        <Link href={link("gst")}>GST and credit review</Link>
+        <Link prefetch={false} href={link("gst")}>
+          GST and credit review
+        </Link>
       </section>
       <section>
         <h2>Finished-goods stock</h2>
-        <Link href={link("stock")}>Stock detail</Link>
+        <Link prefetch={false} href={link("stock")}>
+          Stock detail
+        </Link>
         <ReportTable
           report={{
             ...data.stock,
@@ -120,12 +138,16 @@ export default async function DashboardPage({
           Yield alerts:{" "}
           {data.production.rows.filter((r) => r.alert === "true").length}
         </p>
-        <Link href={link("production")}>Production register</Link>
+        <Link prefetch={false} href={link("production")}>
+          Production register
+        </Link>
         <ReportTable report={data.production} />
       </section>
       <section>
         <h2>Customer outstanding as of today</h2>
-        <Link href={link("customer_balances")}>Receivables detail</Link>
+        <Link prefetch={false} href={link("customer_balances")}>
+          Receivables detail
+        </Link>
         <ReportTable report={data.receivables} />
       </section>
     </>

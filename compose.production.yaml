@@ -1,0 +1,149 @@
+name: pandian-hardened
+
+x-limits: &limits
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 128
+  mem_limit: 768m
+  cpus: 2
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.database
+    user: "70:${PANDIAN_OPERATOR_GID:-1000}"
+    environment:
+      POSTGRES_DB: pandian
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres_password]
+    volumes: [database:/var/lib/postgresql/data]
+    networks: [database]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 2
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d pandian"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  operations:
+    <<: *limits
+    user: "1000:${PANDIAN_OPERATOR_GID:-1000}"
+    profiles: [operations]
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: operations
+    environment:
+      DB_ADMIN_URL_FILE: /run/secrets/admin_url
+      DATABASE_URL_FILE: /run/secrets/owner_url
+      RUNTIME_DATABASE_URL_FILE: /run/secrets/runtime_url
+      OPERATOR_ACCOUNT_FILE: /run/secrets/operator_account
+    secrets: [admin_url, owner_url, runtime_url, operator_account]
+    networks: [database]
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    <<: *limits
+    user: "1000:${PANDIAN_OPERATOR_GID:-1000}"
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: runtime
+    environment:
+      NOVA_DEPLOYMENT_MODE: production
+      NOVA_ALLOW_DEMO_SEED: "false"
+      NOVA_ALLOW_DEMO_INVOICES: "false"
+      DATABASE_URL_FILE: /run/secrets/runtime_url
+      BETTER_AUTH_SECRET_FILE: /run/secrets/auth_secret
+      BETTER_AUTH_URL: https://pandian.localhost:${PANDIAN_HTTPS_PORT:-3443}
+    secrets: [runtime_url, auth_secret]
+    networks: [database, frontend]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/.next/cache:size=64m,uid=1000,gid=1000,mode=0700
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 7s
+      start_period: 20s
+      retries: 3
+    depends_on:
+      db: { condition: service_healthy }
+
+  proxy:
+    <<: *limits
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    user: "1000:1000"
+    extra_hosts: ["pandian.localhost:127.0.0.1"]
+    environment:
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /config
+      PANDIAN_HTTPS_PORT: ${PANDIAN_HTTPS_PORT:-3443}
+    ports: ["127.0.0.1:${PANDIAN_HTTPS_PORT:-3443}:8443"]
+    networks: [frontend, edge]
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy_data:/data
+      - proxy_config:/config
+    tmpfs:
+      - /tmp:mode=1777,size=16m
+    restart: unless-stopped
+    depends_on:
+      app: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          "wget -q -O /dev/null --no-check-certificate https://pandian.localhost:8443/api/health",
+        ]
+      interval: 10s
+      timeout: 7s
+      start_period: 5s
+      retries: 5
+
+networks:
+  database: { internal: true }
+  frontend: { internal: true }
+  edge: {}
+volumes:
+  database:
+  proxy_data:
+  proxy_config:
+secrets:
+  postgres_password:
+    {
+      file: "${PANDIAN_SECRETS_DIR:?Run npm run production:init}/postgres_password",
+    }
+  admin_url: { file: "${PANDIAN_SECRETS_DIR}/admin_url" }
+  owner_url: { file: "${PANDIAN_SECRETS_DIR}/owner_url" }
+  runtime_url: { file: "${PANDIAN_SECRETS_DIR}/runtime_url" }
+  auth_secret: { file: "${PANDIAN_SECRETS_DIR}/auth_secret" }
+  operator_account: { file: "${PANDIAN_SECRETS_DIR}/operator_account.json" }

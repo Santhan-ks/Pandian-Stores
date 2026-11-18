@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../../lib/db/schema";
+import { productionMode } from "../../lib/config";
 
 export function createAuth(
   db: NodePgDatabase<typeof schema>,
@@ -13,11 +14,14 @@ export function createAuth(
   return betterAuth({
     secret,
     baseURL,
+    advanced: productionMode()
+      ? { ipAddress: { ipAddressHeaders: ["x-pandian-client-ip"] } }
+      : undefined,
     database: drizzleAdapter(db, { provider: "pg", schema }),
     emailAndPassword: {
       enabled: true,
       disableSignUp: true,
-      minPasswordLength: 12,
+      minPasswordLength: productionMode() ? 16 : 12,
     },
     session: {
       expiresIn: 60 * 60 * 8,

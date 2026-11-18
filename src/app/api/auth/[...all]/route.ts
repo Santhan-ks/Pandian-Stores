@@ -1,6 +1,7 @@
 import { getAuth } from "@/modules/auth/server";
 import { getDatabase } from "@/lib/db/connection";
-import { allowLogin } from "@/modules/auth/login-limit";
+import { allowLogin, allowProxyLogin } from "@/modules/auth/login-limit";
+import { setting } from "@/lib/config";
 import { checkOrigin, errorResponse, readJson } from "@/modules/catalog/http";
 export const runtime = "nodejs";
 async function handle(request: Request) {
@@ -14,11 +15,16 @@ async function handle(request: Request) {
       const body = await readJson(request.clone());
       if (
         operation === "sign-in/email" &&
-        !(await allowLogin(
+        (!(await allowProxyLogin(
           getDatabase(),
-          (body as { email?: unknown } | null)?.email,
-          process.env.BETTER_AUTH_SECRET ?? "",
-        ))
+          request.headers,
+          setting("BETTER_AUTH_SECRET") ?? "",
+        )) ||
+          !(await allowLogin(
+            getDatabase(),
+            (body as { email?: unknown } | null)?.email,
+            setting("BETTER_AUTH_SECRET") ?? "",
+          )))
       )
         return Response.json(
           { error: "Too many attempts. Try again shortly." },

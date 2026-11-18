@@ -1,0 +1,52 @@
+{
+    admin off
+    auto_https disable_redirects
+    skip_install_trust
+    servers {
+        protocols h1 h2
+        timeouts {
+            read_header 10s
+            read_body 15s
+            write 45s
+            idle 60s
+        }
+        max_header_size 16KB
+    }
+}
+
+https://pandian.localhost:8443 {
+    tls internal
+    request_body {
+        max_size 64KB
+    }
+    header {
+        Strict-Transport-Security "max-age=86400"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+    log {
+        output stdout
+        format filter {
+            wrap json
+            fields {
+                request>headers delete
+                request>uri delete
+                request>remote_ip delete
+                request>remote_port delete
+                request>client_ip delete
+                resp_headers delete
+            }
+        }
+    }
+    reverse_proxy app:3000 {
+        header_up Host pandian.localhost:{$PANDIAN_HTTPS_PORT}
+        header_up X-Forwarded-Host pandian.localhost:{$PANDIAN_HTTPS_PORT}
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Pandian-Client-IP {remote_host}
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 35s
+        }
+    }
+}

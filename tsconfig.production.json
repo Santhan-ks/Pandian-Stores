@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "incremental": false,
+    "rootDir": ".",
+    "outDir": ".next/launcher",
+    "types": ["node"]
+  },
+  "include": ["scripts/start-production.ts"],
+  "exclude": ["node_modules", ".next"]
+}

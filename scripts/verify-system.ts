@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { createDatabasePool } from "../src/lib/db/pool";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { sql } from "drizzle-orm";
@@ -25,10 +26,7 @@ if (
   );
 const databaseName =
   "nova_review_" + randomUUID().replaceAll("-", "") + "_test";
-const adminPool = new Pool({
-  connectionString: base,
-  connectionTimeoutMillis: 5000,
-});
+const adminPool = createDatabasePool(base);
 const url = new URL(base);
 url.pathname = "/" + databaseName;
 let pool: Pool | undefined;
@@ -37,10 +35,7 @@ try {
   await adminPool.query(`CREATE DATABASE "${databaseName}"`);
   created = true;
   console.log(`Fresh review database: ${databaseName}`);
-  pool = new Pool({
-    connectionString: url.toString(),
-    connectionTimeoutMillis: 5000,
-  });
+  pool = createDatabasePool(url.toString());
   const db = drizzle(pool, { schema });
   await migrate(db, { migrationsFolder: "drizzle" });
   await migrate(db, { migrationsFolder: "drizzle" });
@@ -187,6 +182,15 @@ try {
   }
 } finally {
   await pool?.end();
+  const remaining = await adminPool.query(
+    "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1",
+    [databaseName],
+  );
+  assert.equal(
+    remaining.rows[0].n,
+    0,
+    "Review connections must close before the disposable database is dropped.",
+  );
   if (!/^nova_review_[a-f0-9]{32}_test$/.test(databaseName))
     throw new Error("Unsafe review database identity");
   if (created)

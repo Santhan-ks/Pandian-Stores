@@ -13,6 +13,10 @@ export function createDatabasePool(connectionString: string) {
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     max: 10,
+    application_name: "pandian-stores",
+    statement_timeout: 30000,
+    lock_timeout: 5000,
+    idle_in_transaction_session_timeout: 30000,
   });
   pool.on("error", (error: Error & { code?: string }) =>
     console.error("Database pool connection closed", {
