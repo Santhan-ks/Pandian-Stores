@@ -98,3 +98,5 @@ export default async function DashboardPage({
     </>
   );
 }
+
+export const metadata = { title: "Owner dashboard" };

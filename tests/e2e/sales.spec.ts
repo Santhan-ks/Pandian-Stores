@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+test.beforeEach(async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+});
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
@@ -8,6 +11,8 @@ import * as schema from "../../src/lib/db/schema";
 test("mobile order to approval, invoice PDF, dispatch, partial collection and auditor view", async ({
   page,
 }) => {
+  test.setTimeout(60000);
+  await page.setViewportSize({ width: 360, height: 800 });
   execFileSync(
     process.execPath,
     ["--import", "tsx", "scripts/prepare-e2e.ts"],
@@ -30,6 +35,13 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
     await page.goto("/sales");
   }
   await login("salesman.a@example.test");
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Skip to content" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main-content")).toBeFocused();
+  const orderStarted = performance.now();
   await expect(
     page.getByRole("option", { name: "Distributor B", exact: true }),
   ).toHaveCount(0);
@@ -39,8 +51,47 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   await expect(
     page.getByRole("heading", { name: "Retailer A — submitted" }),
   ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/stage6-mobile.png",
+    fullPage: true,
+  });
+  const orderMs = performance.now() - orderStarted;
+  expect(orderMs).toBeLessThan(60000);
+  console.log(`Mobile 360px order entry: ${orderMs.toFixed(0)} ms`);
   await page.getByRole("button", { name: "Log out" }).click();
   await login("admin@example.test");
+  await page.setViewportSize({ width: 768, height: 1024 });
+  for (const path of [
+    "/users",
+    "/customers",
+    "/territories",
+    "/suppliers",
+    "/materials",
+    "/products",
+    "/prices",
+    "/boms",
+    "/boms/demo-bom-1",
+    "/inventory",
+    "/production",
+    "/reports",
+    "/dashboard",
+    "/sales",
+  ]) {
+    await page.goto(path);
+    await expect(page.locator("main h1")).toBeVisible();
+    if (path === "/dashboard")
+      await page.screenshot({
+        path: "test-results/stage6-tablet.png",
+        fullPage: true,
+      });
+    await expect(page).toHaveTitle(/\| NOVA$/);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+    ).toBe(true);
+  }
+  await page.setViewportSize({ width: 360, height: 800 });
   await page
     .getByText("Business profile and product HSN configuration", {
       exact: true,
@@ -89,6 +140,13 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
     "SAMPLE INVOICE \x97 NOT VALID FOR TAX PURPOSES",
   );
   expect(bytes.toString("latin1")).toContain("Invoice total INR: 7875.00");
+  page.removeAllListeners("dialog");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Confirm full dispatch" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Retailer A — invoiced" }),
+  ).toBeVisible();
+  page.on("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Confirm full dispatch" }).click();
   await expect(
     page.getByRole("heading", { name: "Retailer A — dispatched" }),
@@ -105,6 +163,9 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
     .click();
   await expect(page.getByText(/Outstanding INR 3875/)).toBeVisible();
   // Retain the admin's valid session while visiting the other roles, respecting the login rate limit.
+  const invoiceId = (
+    await (await page.request.get("/api/sales")).json()
+  ).orders.find((o: { invoice_id: string }) => o.invoice_id).invoice_id;
   const adminCookies = await page.context().cookies();
   await page.context().clearCookies();
   await login("auditor@example.test");
@@ -150,6 +211,46 @@ test("mobile order to approval, invoice PDF, dispatch, partial collection and au
   expect(denied.status()).toBe(200);
   await page.getByRole("button", { name: "Log out" }).click();
   await login("salesman.b@example.test");
+  expect((await page.request.get("/api/sales?pdf=" + invoiceId)).status()).toBe(
+    404,
+  );
+  const origin = {
+    Origin: "http://localhost:3100",
+    "Content-Type": "application/json",
+  };
+  expect(
+    (
+      await page.request.post("/api/sales?dispatch=forbidden", {
+        headers: origin,
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await page.request.post("/api/sales", {
+        headers: origin,
+        data: Buffer.from("{"),
+      })
+    ).status(),
+  ).toBe(400);
+  expect(
+    (
+      await page.request.post("/api/sales", {
+        headers: origin,
+        data: "x".repeat(65537),
+      })
+    ).status(),
+  ).toBe(413);
+  expect(
+    (
+      await page.request.post("/api/sales", {
+        headers: { ...origin, Origin: "https://untrusted.example" },
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
+
   expect(
     (await page.request.get("/api/reports?kind=gst&format=csv")).status(),
   ).toBe(403);

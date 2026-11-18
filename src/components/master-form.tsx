@@ -54,7 +54,13 @@ export function MasterEditor({
   }
   return (
     <>
-      <div className="table-scroll">
+      {!rows.length && <p>No records yet.</p>}
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Scrollable data table"
+      >
         <table>
           <thead>
             <tr>

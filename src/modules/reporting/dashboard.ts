@@ -31,10 +31,12 @@ export async function getDashboard(
       item: "",
       status: "all",
     };
-    const orders = await reportInTransaction(tx, user, "orders", {
-      ...f,
-      from: "0001-01-01",
-    });
+    await tx.execute(sql`SET LOCAL statement_timeout='10s'`);
+    const orderCounts = (
+      await tx.execute(
+        sql`SELECT count(*) FILTER(WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date=${today}::date)::text AS today,count(*) FILTER(WHERE status='submitted')::text AS pending FROM nova.sales_orders`,
+      )
+    ).rows[0];
     const sales = await reportInTransaction(tx, user, "sales", f),
       stock = await reportInTransaction(tx, user, "stock", f),
       production = await reportInTransaction(tx, user, "production", f),
@@ -42,10 +44,8 @@ export async function getDashboard(
     return {
       today,
       scope,
-      submittedToday: orders.rows.filter((r) => r.date?.slice(0, 10) === today)
-        .length,
-      pendingApprovals: orders.rows.filter((r) => r.status === "submitted")
-        .length,
+      submittedToday: Number(orderCounts.today),
+      pendingApprovals: Number(orderCounts.pending),
       sales,
       stock,
       production,

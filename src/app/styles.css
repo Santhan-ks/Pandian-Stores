@@ -130,3 +130,54 @@ li {
     grid-template-columns: 1fr;
   }
 }
+
+main,
+fieldset {
+  min-width: 0;
+}
+th,
+td {
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+th {
+  background: #eef3f6;
+}
+.workspace-navigation {
+  gap: 0.5rem;
+}
+.nav-link {
+  padding: 0.65rem 0.5rem;
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+.nav-link[aria-current="page"] {
+  border-color: #164e63;
+  font-weight: 700;
+}
+.skip-link {
+  position: absolute;
+  top: -5rem;
+  padding: 0.8rem;
+  background: white;
+  z-index: 10;
+}
+.skip-link:focus {
+  top: 0;
+}
+@media (max-width: 600px) {
+  .workspace-navigation {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .nav-link {
+    flex-shrink: 0;
+  }
+  main {
+    padding: 0 1rem;
+  }
+  th,
+  td {
+    padding: 0.6rem;
+  }
+}

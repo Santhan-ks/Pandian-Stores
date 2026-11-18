@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "NOVA",
+  title: { default: "NOVA", template: "%s | NOVA" },
   description: "Manufacturing operations",
 };
 

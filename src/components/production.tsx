@@ -105,6 +105,13 @@ export function Production({
     setGood(b?.expectedOutput ?? "");
   }
   async function request(body: unknown, query = "") {
+    if (
+      query.startsWith("?post=") &&
+      !window.confirm(
+        "Post production? All material issues and finished output will be immutable.",
+      )
+    )
+      return false;
     setError("");
     setBusy(true);
     try {
@@ -321,7 +328,12 @@ export function Production({
             {run.snapshot.yield.flagged ? "— Alert" : ""} · tolerance{" "}
             {run.tolerance}%
           </p>
-          <div className="table-scroll">
+          <div
+            className="table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="Scrollable data table"
+          >
             <table>
               <thead>
                 <tr>

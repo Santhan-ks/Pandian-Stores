@@ -1,3 +1,4 @@
+import { readJson } from "@/modules/catalog/http";
 import { getDatabase } from "@/lib/db/connection";
 import { currentActor } from "@/modules/auth/server";
 import { checkOrigin, errorResponse } from "@/modules/catalog/http";
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     const actor = await currentActor(request.headers);
     const db = getDatabase();
     const p = new URL(request.url).searchParams;
-    const body = await request.json();
+    const body = await readJson(request);
     let result;
     if (p.has("review"))
       result = await reviewOrder(db, actor, p.get("review")!, body);
@@ -61,7 +62,12 @@ export async function POST(request: Request) {
     else if (p.has("dispatch"))
       result = await dispatchOrder(db, actor, p.get("dispatch")!);
     else if (p.has("credit"))
-      result = await creditInvoice(db, actor, p.get("credit")!, body.reason);
+      result = await creditInvoice(
+        db,
+        actor,
+        p.get("credit")!,
+        (body as { reason: string } | null)?.reason ?? "",
+      );
     else if (p.has("payment")) result = await recordPayment(db, actor, body);
     else result = await submitOrder(db, actor, body);
     return Response.json({ id: result ?? null });

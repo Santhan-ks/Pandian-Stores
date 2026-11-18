@@ -1,3 +1,4 @@
+import { readJson } from "@/modules/catalog/http";
 import { getDatabase } from "@/lib/db/connection";
 import { currentActor } from "@/modules/auth/server";
 import {
@@ -24,16 +25,17 @@ export async function POST(request: Request) {
   try {
     checkOrigin(request);
     const actor = await currentActor(request.headers);
+    const body = await readJson(request);
     const id = new URL(request.url).searchParams.get("post");
     const edit = new URL(request.url).searchParams.get("edit");
     if (edit)
       return Response.json({
-        id: await reviseDraft(getDatabase(), actor, edit, await request.json()),
+        id: await reviseDraft(getDatabase(), actor, edit, body),
       });
     return Response.json({
       id: id
         ? await postDocument(getDatabase(), actor, id)
-        : await createDocument(getDatabase(), actor, await request.json()),
+        : await createDocument(getDatabase(), actor, body),
     });
   } catch (e) {
     return errorResponse(e);

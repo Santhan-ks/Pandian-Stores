@@ -60,8 +60,31 @@ export function Sales({
     { productId: string; quantity: string; rate: string }[]
   >([]);
   const router = useRouter();
+  const [failed, setFailed] = useState(false);
   const admin = role === "admin";
   async function send(query: string, body: unknown, form?: HTMLFormElement) {
+    if (
+      query.startsWith("?dispatch=") &&
+      !window.confirm(
+        "Post the full dispatch? Stock movements will be immutable.",
+      )
+    )
+      return false;
+    if (
+      query.startsWith("?credit=") &&
+      !window.confirm(
+        "Issue a full credit note? This reverses the receivable, not physical dispatch.",
+      )
+    )
+      return false;
+    if (
+      query.startsWith("?invoice=") &&
+      !window.confirm(
+        "Issue a real tax invoice using the configured business profile? The snapshot cannot be edited.",
+      )
+    )
+      return false;
+    setFailed(false);
     setBusy(true);
     setMessage("");
     try {
@@ -71,12 +94,17 @@ export function Sales({
         body: JSON.stringify(body),
       });
       const result = await r.json();
+      if (r.status === 401) {
+        router.push("/login");
+        return false;
+      }
       if (!r.ok) throw new Error(result.error ?? "Operation failed");
       setData(await (await fetch("/api/sales")).json());
       if (form) delete form.dataset.requestKey;
       setMessage("Saved.");
       return true;
     } catch (e) {
+      setFailed(true);
       setMessage(e instanceof Error ? e.message : "Operation failed");
       return false;
     } finally {
@@ -103,7 +131,7 @@ export function Sales({
           onSave={() => router.refresh()}
         />
       )}
-      <p role="status">{message}</p>
+      <p role={failed ? "alert" : "status"}>{message}</p>
       {(admin || role === "salesman") && (
         <form
           onSubmit={async (e) => {
@@ -166,6 +194,7 @@ export function Sales({
                 packets
                 <input
                   aria-label="Order quantity"
+                  inputMode="numeric"
                   type="number"
                   min="1"
                   step="1"
@@ -202,7 +231,12 @@ export function Sales({
           <p>
             Order {o.id} {o.reason && `— ${o.reason}`}
           </p>
-          <div className="table-scroll">
+          <div
+            className="table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="Scrollable data table"
+          >
             <table>
               <thead>
                 <tr>
@@ -243,7 +277,7 @@ export function Sales({
           </div>
           {o.dispatch_id && (
             <p>
-              Dispatch {o.dispatch_id} � {o.dispatched_at}. Cost of goods sold:{" "}
+              Dispatch {o.dispatch_id} — {o.dispatched_at}. Cost of goods sold:{" "}
               {o.dispatch_cost === null
                 ? "unknown (opening valuation unavailable)"
                 : `INR ${o.dispatch_cost}`}

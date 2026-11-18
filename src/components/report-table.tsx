@@ -1,9 +1,20 @@
+"use client";
+import { useState } from "react";
 import type { Report } from "@/modules/reporting/types";
-import { displayCell } from "@/modules/reporting/exports";
+import { displayCell } from "@/modules/reporting/format";
 export function ReportTable({ report }: { report: Report }) {
+  const [page, setPage] = useState(0);
+  const last = Math.max(0, Math.ceil(report.rows.length / 50) - 1),
+    current = Math.min(page, last);
+  const rows = report.rows.slice(current * 50, current * 50 + 50);
   return (
     <>
-      <div className="table-scroll">
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Scrollable data table"
+      >
         {report.rows.length ? (
           <table>
             <thead>
@@ -16,7 +27,7 @@ export function ReportTable({ report }: { report: Report }) {
               </tr>
             </thead>
             <tbody>
-              {report.rows.map((r, i) => (
+              {rows.map((r, i) => (
                 <tr key={i}>
                   {report.columns.map((c) => (
                     <td key={c.key}>{displayCell(r[c.key], c)}</td>
@@ -29,6 +40,23 @@ export function ReportTable({ report }: { report: Report }) {
           <p>No records for the selected filters.</p>
         )}
       </div>
+      {report.rows.length > 50 && (
+        <nav aria-label="Report pages">
+          <button disabled={current === 0} onClick={() => setPage(current - 1)}>
+            Previous page
+          </button>
+          <span role="status">
+            Page {current + 1} of {last + 1}; {report.rows.length} records.
+            Totals cover every record.
+          </span>
+          <button
+            disabled={current === last}
+            onClick={() => setPage(current + 1)}
+          >
+            Next page
+          </button>
+        </nav>
+      )}
       {Object.keys(report.totals).length > 0 && (
         <dl>
           {report.columns

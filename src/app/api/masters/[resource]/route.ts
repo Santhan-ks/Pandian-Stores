@@ -1,3 +1,4 @@
+import { readJson } from "@/modules/catalog/http";
 import { getDatabase } from "@/lib/db/connection";
 import { currentActor } from "@/modules/auth/server";
 import { AccessError } from "@/modules/auth/policy";
@@ -34,7 +35,7 @@ export async function POST(request: Request, context: Context) {
         getDatabase(),
         actor,
         resource,
-        await request.json(),
+        await readJson(request),
         id,
       ),
     );

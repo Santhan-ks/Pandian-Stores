@@ -131,3 +131,5 @@ export default async function ReportsPage({
     </>
   );
 }
+
+export const metadata = { title: "Reports" };

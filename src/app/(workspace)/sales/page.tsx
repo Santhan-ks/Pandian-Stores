@@ -33,3 +33,5 @@ export default async function SalesPage() {
     />
   );
 }
+
+export const metadata = { title: "Sales" };

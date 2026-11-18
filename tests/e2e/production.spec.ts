@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+test.beforeEach(async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+});
 test("production supervisor posts benchmark and adds overheads; auditor sees read-only costs", async ({
   page,
 }) => {
@@ -40,6 +43,18 @@ test("production supervisor posts benchmark and adds overheads; auditor sees rea
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: "Murukku 200 g" }) });
   await run.locator("summary").click();
+  await page.route(
+    "**/api/production?post=*",
+    async (route) => {
+      await route.fetch();
+      await route.abort("failed");
+    },
+    { times: 1 },
+  );
+  await run
+    .getByRole("button", { name: "Post production", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toBeVisible();
   await run
     .getByRole("button", { name: "Post production", exact: true })
     .click();

@@ -30,6 +30,13 @@ export function Inventory({
   const [busy, setBusy] = useState(false);
   const [key, setKey] = useState(() => crypto.randomUUID());
   async function request(body: unknown, id?: string) {
+    if (
+      id &&
+      !window.confirm(
+        "Post this stock document? Posted movements cannot be edited.",
+      )
+    )
+      return;
     setBusy(true);
     setError("");
     try {
@@ -104,7 +111,12 @@ export function Inventory({
         explicitly unavailable. Category and date filters apply to the ledger;
         this summary is current.
       </p>
-      <div className="table-scroll">
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Scrollable data table"
+      >
         <table>
           <thead>
             <tr>

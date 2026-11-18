@@ -17,7 +17,7 @@ const pool = new Pool({ connectionString: url });
 try {
   const db = drizzle(pool, { schema });
   await db.execute(
-    sql`TRUNCATE nova.users,nova.roles,nova.units,nova.inventory_items,nova.territories CASCADE`,
+    sql`TRUNCATE nova.login_attempts,nova.users,nova.roles,nova.units,nova.inventory_items,nova.territories CASCADE`,
   );
   await seedDemo(db, process.env.DEMO_PASSWORD ?? "");
   await inventoryFixture(db);

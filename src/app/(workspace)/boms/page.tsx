@@ -43,3 +43,5 @@ export default async function BomsPage() {
     </>
   );
 }
+
+export const metadata = { title: "Bills of Materials" };

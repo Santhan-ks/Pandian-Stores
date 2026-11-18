@@ -1,15 +1,7 @@
-import type { Report, Column } from "./types";
-import { Money as D } from "../billing/tax";
+import { displayCell } from "./format";
+export { displayCell } from "./format";
+import type { Report } from "./types";
 import { textPdf } from "../../lib/pdf/text";
-export function displayCell(value: string | null, column: Column) {
-  return value === null
-    ? "Unavailable"
-    : column.type === "money"
-      ? new D(value).toFixed(2)
-      : column.type === "number"
-        ? new D(value).toFixed()
-        : value;
-}
 function csvCell(value: string, numeric = false) {
   const safe =
     !numeric && /^[\s\u0000-\u001f]*[=+\-@]/.test(value) ? "'" + value : value;

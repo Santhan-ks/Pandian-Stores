@@ -1,3 +1,4 @@
+import { readJson } from "@/modules/catalog/http";
 import { getDatabase } from "@/lib/db/connection";
 import { currentActor } from "@/modules/auth/server";
 import { listBoms } from "@/modules/catalog/service";
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     checkOrigin(request);
     const actor = await currentActor(request.headers);
     return Response.json(
-      await publishBom(getDatabase(), actor, await request.json()),
+      await publishBom(getDatabase(), actor, await readJson(request)),
     );
   } catch (error) {
     return errorResponse(error);

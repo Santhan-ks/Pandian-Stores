@@ -119,3 +119,16 @@ export default async function MasterPage({
     </>
   );
 }
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ resource: string }>;
+}) {
+  const { resource } = await params;
+  return {
+    title: Object.hasOwn(schemas, resource)
+      ? resource.charAt(0).toUpperCase() + resource.slice(1)
+      : "Not found",
+  };
+}

@@ -156,7 +156,15 @@ export async function reportInTransaction(
   const user = reportAccess(actor, kind),
     f = filtersSchema.parse(input);
   await checkScope(db, user, f);
-  const result = await db.execute(await query(user, kind, f));
+  const statement = await query(user, kind, f);
+  const result = await db.execute(
+    sql`SELECT * FROM (${statement}) report_rows LIMIT 5001`,
+  );
+  if (result.rows.length > 5000)
+    throw new AccessError(
+      422,
+      "Report exceeds 5,000 rows. Narrow the date range or filters.",
+    );
   const rows: Row[] = result.rows.map((r) =>
     Object.fromEntries(
       columns[kind].map((c) => [
@@ -250,6 +258,7 @@ export async function getReport(
     await tx.execute(
       sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
     );
+    await tx.execute(sql`SET LOCAL statement_timeout='10s'`);
     return reportInTransaction(tx, actor, kind, input);
   });
 }

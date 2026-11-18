@@ -11,6 +11,10 @@ export default function Login() {
     setError("");
     try {
       const data = Object.fromEntries(new FormData(event.currentTarget));
+      const passwordField = event.currentTarget.querySelector<HTMLInputElement>(
+        'input[name="password"]',
+      );
+      if (passwordField) passwordField.value = "";
       const response = await fetch("/api/auth/sign-in/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

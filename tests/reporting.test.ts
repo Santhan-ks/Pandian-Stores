@@ -43,10 +43,18 @@ const admin = { id: "demo-admin", role: "admin" } as const,
   production = { id: "demo-production", role: "production" } as const,
   a = { id: "demo-salesman-a", role: "salesman" } as const,
   b = { id: "demo-salesman-b", role: "salesman" } as const;
+const currentBusinessDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
+const reportEnd =
+  currentBusinessDate > "2026-11-30" ? currentBusinessDate : "2026-11-30";
 const f: Filters = {
   from: "2026-11-01",
-  to: "2026-11-30",
-  asOf: "2026-11-30",
+  to: reportEnd,
+  asOf: reportEnd,
   scope: "demo",
   customer: "",
   product: "",
@@ -387,7 +395,10 @@ test("CSV escaping, exact totals, empty export and PDF use the displayed result"
 });
 test("dashboard metrics match their underlying source reports", async () => {
   const dashboard = await getDashboard(db, owner, "demo");
-  money(dashboard.sales.totals.total, "7875");
+  money(
+    dashboard.sales.totals.total,
+    dashboard.today.startsWith("2026-11") ? "7875" : "0",
+  );
   money(dashboard.receivables.totals.outstanding, "3875");
   expect(dashboard.pendingApprovals).toBe(1);
   expect(dashboard.submittedToday).toBe(2);

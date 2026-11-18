@@ -1,7 +1,7 @@
 import "server-only";
 
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { createDatabasePool } from "./pool";
 import * as schema from "./schema";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
@@ -13,7 +13,7 @@ export function getDatabase() {
     if (!databaseUrl) {
       throw new Error("DATABASE_URL is required");
     }
-    database = drizzle(new Pool({ connectionString: databaseUrl }), { schema });
+    database = drizzle(createDatabasePool(databaseUrl), { schema });
   }
 
   return database;

@@ -1,3 +1,4 @@
+import { readJson } from "@/modules/catalog/http";
 import { getDatabase } from "@/lib/db/connection";
 import { currentActor } from "@/modules/auth/server";
 import {
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     await saveProfile(
       getDatabase(),
       await currentActor(request.headers),
-      await request.json(),
+      await readJson(request),
     );
     return Response.json({ saved: true });
   } catch (e) {

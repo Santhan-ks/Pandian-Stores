@@ -69,3 +69,5 @@ export default async function BomPage({
     </>
   );
 }
+
+export const metadata = { title: "BOM revision" };

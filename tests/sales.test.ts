@@ -564,3 +564,49 @@ test("payment allocations reject mismatched totals, other customers and conflict
   expect(totals.n).toBe(1);
   expect(new D(String(totals.amount)).eq(100)).toBe(true);
 });
+test("database order guards prevent reopening approved orders or moving their frozen lines", async () => {
+  const id = await approved("10");
+  const other = await submitOrder(db, a, order("demo-retailer-a", "10"));
+  await expect(
+    db.transaction(async (tx) => {
+      await tx.execute(
+        sql`UPDATE nova.sales_orders SET status='submitted' WHERE id=${id}`,
+      );
+    }),
+  ).rejects.toThrow();
+  await expect(
+    db.transaction(async (tx) => {
+      await tx.execute(
+        sql`UPDATE nova.sales_order_lines SET order_id=${other} WHERE order_id=${id}`,
+      );
+    }),
+  ).rejects.toThrow();
+});
+test("database full-credit guard rejects paid invoices and mismatched credit values", async () => {
+  const { invoice } = await invoiced("10");
+  await recordPayment(db, admin, payment(invoice, "100"));
+  await expect(
+    db.transaction(async (tx) => {
+      await tx.execute(
+        sql`INSERT INTO nova.credit_notes(id,invoice_id,reason,amount,actor_id) VALUES(${randomUUID()},${invoice},'Direct credit regression',525,${admin.id})`,
+      );
+    }),
+  ).rejects.toThrow();
+  const second = await invoiced("10");
+  await expect(
+    db.transaction(async (tx) => {
+      await tx.execute(
+        sql`INSERT INTO nova.credit_notes(id,invoice_id,reason,amount,actor_id) VALUES(${randomUUID()},${second.invoice},'Invalid partial credit',1,${admin.id})`,
+      );
+    }),
+  ).rejects.toThrow();
+});
+test("sales history and invoice access follow current territory assignment as well as order ownership", async () => {
+  await invoiced("10");
+  await db.execute(
+    sql`UPDATE nova.customers SET territory_id='demo-territory-b' WHERE id='demo-retailer-a'`,
+  );
+  expect((await listSales(db, a)).orders).toHaveLength(0);
+  expect((await listSales(db, b)).orders).toHaveLength(0);
+  expect((await listSales(db, admin)).orders).toHaveLength(1);
+});

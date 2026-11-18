@@ -1,3 +1,4 @@
+import { WorkspaceNavigation } from "@/components/workspace-navigation";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentActor } from "@/modules/auth/server";
@@ -19,13 +20,16 @@ export default async function WorkspaceLayout({
   }
   return (
     <>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <header>
         <Link href="/products">NOVA</Link>
         <span>{roleNames[actor.role]}</span>
         <Logout />
       </header>
-      <nav aria-label="Main navigation">
-        {[
+      <WorkspaceNavigation
+        resources={[
           "users",
           "customers",
           "territories",
@@ -39,15 +43,11 @@ export default async function WorkspaceLayout({
           "sales",
           "reports",
           "dashboard",
-        ]
-          .filter((r) => canRead(actor.role, r))
-          .map((r) => (
-            <Link href={"/" + r} key={r}>
-              {r === "boms" ? "BOMs" : r.charAt(0).toUpperCase() + r.slice(1)}
-            </Link>
-          ))}
-      </nav>
-      <main>{children}</main>
+        ].filter((r) => canRead(actor.role, r))}
+      />
+      <main id="main-content" tabIndex={-1}>
+        {children}
+      </main>
     </>
   );
 }
