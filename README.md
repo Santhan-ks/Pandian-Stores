@@ -69,6 +69,8 @@ The separate HTTPS installation at `https://pandian.localhost:3443` is a hardene
 | Owner                 | `owner@example.test`      | Review the dashboard, reports, costs, stock and outstanding balances.                   |
 | Accountant / Auditor  | `auditor@example.test`    | Inspect records and download reports without changing business data.                    |
 
+password= "12345123456"
+
 There are **five roles and six demo accounts**, with two separate salesman logins for isolation checks. These accounts and this published password are for fictional local demonstrations only. They do not grant access to the hardened installation.
 
 ### How access works
