@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: nova
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${NOVA_DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/01-init-test-db.sql:ro
@@ -24,7 +24,7 @@ services:
       NOVA_ALLOW_DEMO_INVOICES: ${NOVA_ALLOW_DEMO_INVOICES:-false}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${NOVA_APP_PORT:-3000}:3000"
     healthcheck:
       test:
         [

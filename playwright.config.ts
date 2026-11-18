@@ -16,7 +16,7 @@ export default defineConfig({
     viewport: { width: 390, height: 844 },
   },
   webServer: {
-    command: "npm run start -- --port 3100",
+    command: "npm run start -- --hostname 127.0.0.1 --port 3100",
     url: "http://localhost:3100/login",
     reuseExistingServer: false,
     env: {

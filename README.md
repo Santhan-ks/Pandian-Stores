@@ -1,61 +1,162 @@
 # NOVA
 
-NOVA is an Order-to-Audit manufacturing system for the NIT Tiruchirappalli internship assessment. Stage 1 implements credential login, five roles, territory-scoped customers, suppliers, materials, products and pack sizes, prices, unit conversions, and published BOM revisions. Stage 0's PostgreSQL health endpoint remains available. Stage 2 adds opening documents, purchases, controlled adjustments and an immutable inventory ledger. Stage 3 adds BOM-driven production, variance and run costing. Stage 4 adds sales orders, GST invoices, dispatch and payment allocations. Stage 5 adds date-filtered reports, CSV/PDF exports and an owner dashboard.
+NOVA is an Order-to-Audit manufacturing management system for the NIT Tiruchirappalli internship assessment. It connects master data and published BOMs to purchasing, an immutable stock ledger, production costing, sales, sample GST invoices, dispatch, collections, reports and an owner dashboard.
 
-## Run locally
+**Local demonstration only. Public production deployment is blocked.** Dependency audit currently fails with 16 high affected-package entries overall and five in the production graph, stemming from Picomatch advisory GHSA-fc5q-39xc-vjpf. The [security assessment](#dependency-risk-assessment) records versions, dependency paths, reproduced denial of service, exposure and mitigations. Functional tests passing does not clear this finding.
 
-Requires Node.js 24, npm, Docker and Docker Compose.
+Submission artifacts: [two-page architecture design note](output/pdf/nova-design-note.pdf) and [recording plan, interview notes and submission checklist](docs/submission-guide.md). No demonstration video has been recorded by this project workflow.
 
-1. Copy `.env.example` to `.env`. Set the same local database password in all three database values. Use letters and digits because Compose constructs its database URL from the password.
-2. Set `BETTER_AUTH_SECRET` to a random value of at least 32 characters. Generate one with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Set `BETTER_AUTH_URL` to the exact browser origin, normally `http://localhost:3000`.
-3. Run `npm ci`, then `docker compose up -d db`.
-4. Run `npm run db:migrate` and `npm run db:migrate:test`.
-5. For local fixtures only, set `NOVA_ALLOW_DEMO_SEED=true` and choose a `DEMO_PASSWORD` of at least 12 characters in `.env`. Run `npm run db:seed` twice to verify rerun behavior.
-6. Run `npm run dev`, or `docker compose up --build -d app` for the production build. Visit <http://localhost:3000/login>.
+## Architecture and repository
 
-The `.env` file is ignored by Git and Docker builds. Compose passes only the database URL, auth secret and origin to the app. It applies versioned migrations before startup. The test database is created on the PostgreSQL volume's first initialization. Stop services with `docker compose down`; this retains data. Do not delete the volume unless you intend to discard its databases.
+| Component               | Implementation and reason                                                                                                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application             | Next.js 16 App Router, React 19 and strict TypeScript keep pages, APIs and services in one application.                                                                            |
+| Database                | PostgreSQL 17 provides transactions, NUMERIC arithmetic, row locks, constraints and immutable-record triggers. Drizzle supplies typed master queries and versioned SQL migrations. |
+| Identity and validation | Better Auth stores credential hashes and sessions in PostgreSQL; Zod validates service inputs. Role and territory checks run on the server.                                        |
+| Calculations            | Decimal.js handles service calculations; PostgreSQL NUMERIC performs authoritative stock valuation. Decimal strings cross financial boundaries.                                    |
+| Validation              | Vitest/PostgreSQL integration tests, Chromium Playwright flows, HTTP smoke checks, ESLint, Prettier and TypeScript. Exact versions are pinned in the lockfile.                     |
 
-Demo emails are `salesman.a@example.test`, `salesman.b@example.test`, `admin@example.test`, `production@example.test`, `auditor@example.test`, and `owner@example.test`. All initially use your local `DEMO_PASSWORD`. No password is committed. Rerunning the seed preserves existing passwords and edits; it is not a password reset. Admins can create users, assign one role per user and reset passwords through Users. Updating a user invalidates their sessions. Seed execution is refused when `NODE_ENV=production` or the explicit demo flag is absent. Production bootstrap and password recovery workflows are not provided in this stage.
+```text
+src/app/               Workspace pages and authenticated API routes
+src/components/        Business forms, tables and navigation
+src/modules/           auth, catalog, inventory, production, sales,
+                       billing, payments and reporting services
+src/lib/               Database connection/schema, units and text PDF renderer
+drizzle/               Migrations 0000-0013, SQL guards/views and metadata
+scripts/               Migrations, fictional fixtures, smoke/fresh-system checks
+tests/                 PostgreSQL regressions and Chromium browser flows
+docker/                First-volume test-database initialization
+.github/workflows/     Independent functional validation and blocking audit jobs
+docs/                  Recording, interview and manual submission guide
+output/pdf/            Two-page design note
+```
 
-## Architecture and data
+Services own authorization and transaction boundaries. Inventory and financial SQL objects are maintained by custom migrations and parameterized SQL; ORM metadata snapshots cover the master tables, not the entire database. Derived views supply balances: there is no editable stock balance cache. No queue, Redis, external accounting service or microservice is used.
 
-Next.js App Router keeps the UI and server routes in one TypeScript application. PostgreSQL supplies transactions and constraints, while Drizzle tracks versioned SQL. This keeps the later ledger and production logic in the same application without adding services.
+## Requirements and configuration
 
-- `src/modules/auth`: Better Auth configuration, session validation and role policy. Passwords use the library's password hashing; sessions are stored in PostgreSQL, expire after eight hours and are renewed according to the library's one-hour update interval. Cookie session caching is disabled so logout and expiry are checked against the database. Public signup is disabled. Only login, session lookup and logout are exposed from the auth handler. Origin checks protect application writes; login has a ten-attempt-per-minute limit and general auth traffic a 120-request-per-minute limit per client. Stage 6 also adds an atomic PostgreSQL limit of ten sign-in attempts per normalized account per 60 seconds, keyed by HMAC rather than storing email/password.
-- `src/modules/catalog`: validated, authorized master services and BOM publication. Zod rejects unknown fields and invalid decimals. Writes and audit records share a transaction. APIs return validation, permission and conflict errors without database details.
-- `src/lib/db/schema.ts` and `drizzle/`: users, accounts, sessions and verification records; roles and user-role assignments; territories linked to salesmen and customers linked to territories; suppliers; units and inventory items; finished products linked to inventory items; one current price per product; BOM versions linked to products and component lines linked to items/units; append-only audit events.
-- `src/lib/units`: exact decimal conversions. Grams, millilitres, pieces and packets are base units. Carton-to-packet conversion requires an explicit capacity; pieces and packets are not interchangeable. Each finished product represents one named pack size and has an explicit pack weight and carton capacity. Changing pack identity requires a new product.
+Use Node.js **24**, its npm, Docker with Linux containers and Docker Compose supporting `--wait`. The default loopback ports are 5432 for PostgreSQL, 3000 for the app and 3100 for browser tests. The first installation needs registry/image network access. Docker images are pinned by digest; npm installs from `package-lock.json`.
 
-BOM creation publishes a complete revision atomically. Revision numbers are serialized by locking the product. Exactly one revision may be active per product. PostgreSQL triggers prevent modifying or deleting published contents, adding lines to a published BOM, incompatible component units and finished goods as components. Revisions retain their original batch size, expected packet output, component quantities and display units. The active flag can move to a new revision. There is no saved draft workflow in Stage 1.
+Copy `.env.example` to `.env` (`cp .env.example .env` works in PowerShell and POSIX shells), then edit it locally:
 
-Money and quantities enter services as decimal strings and are stored as PostgreSQL NUMERIC. Prices accept at most two decimal places; quantities accept at most six. Excess precision is rejected rather than silently rounded. The later invoicing stage will define invoice rounding. No authoritative financial or quantity calculation uses JavaScript floating-point arithmetic.
+| Variable                        | Local configuration                                                                                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_PASSWORD`             | Choose a local alphanumeric database password. Compose constructs a URL from it.                                                                           |
+| `DATABASE_URL`                  | Match that password, database `nova` and the host database port.                                                                                           |
+| `TEST_DATABASE_URL`             | Match that password and port, but use the separate database `nova_test`. Never use the application database.                                               |
+| `BETTER_AUTH_SECRET`            | Random value of at least 32 characters. Generate locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.             |
+| `BETTER_AUTH_URL`               | Exact browser origin, normally `http://localhost:3000`.                                                                                                    |
+| `NOVA_DB_PORT`, `NOVA_APP_PORT` | Optional host ports, default 5432/3000. Bindings remain `127.0.0.1`. If changed, update both database URLs and the browser origin.                         |
+| `SMOKE_BASE_URL`                | Optional smoke-test origin in `.env`; set it to the same origin as `BETTER_AUTH_URL` when using an alternate app port. Default is `http://localhost:3000`. |
+| `NOVA_ALLOW_DEMO_SEED`          | Set `true` only for this local fictional-data demonstration.                                                                                               |
+| `DEMO_PASSWORD`                 | Choose a local password of 12-128 characters for the seeded accounts. No shared password is committed.                                                     |
+| `NOVA_ALLOW_DEMO_INVOICES`      | Set `true` for the sample-invoice workflow; the template defaults to `false`.                                                                              |
 
-## Access policy
+`.env` is ignored by Git and excluded from Docker builds. Keep it and database backups private. Compose passes the database URL, authentication secret/origin and demo-invoice flag to the app; it does not pass the seed password. Host-side seed commands load the private `.env`. Demo seeding refuses `NODE_ENV=production` and requires explicit opt-in. This is local demo preparation, not a production bootstrap procedure.
 
-| Role                  | Read                                         | Write                                                                                           |
-| --------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Salesman              | Own territory customers, products, prices    | None in Stage 1                                                                                 |
-| Factory Admin         | All master data and BOMs                     | Users/roles, territories, customers, suppliers, materials, products, prices and BOM publication |
-| Production Supervisor | Suppliers, materials, products, prices, BOMs | Suppliers, materials, BOM publication                                                           |
-| Accountant/Auditor    | All master data and BOMs                     | None                                                                                            |
-| Owner                 | All master data and BOMs                     | None                                                                                            |
+## Start a local Docker demonstration
 
-Restrictions are enforced in services and APIs as well as navigation. Salesman customer queries join the assigned territory on the server. Password hashes and session tokens are never included in master responses or audit records.
-
-## Benchmark fixtures
-
-The seed creates Murukku 200 g at INR 50 before the exercise's configurable 5% GST rate, 20 packets per carton, and a BOM for one batch yielding 200 packets: flour 40 kg, oil 10 L, salt/spice 1.2 kg, pouches 200 pieces, cartons 10 pieces. Retailer A belongs to Salesman A's Tamil Nadu territory; Distributor B belongs to Salesman B's Karnataka territory. All fixture IDs use a `demo-` prefix and addresses are explicitly invented. No supplier is invented by the benchmark seed because the source names none.
-
-The default Stage 1 seed still creates only masters. Run `npm run db:seed -- --inventory` for the Stage 2 opening and purchase checkpoint. The Stage 3 checkpoint is available with `npm run db:seed -- --production`; it posts opening stock, the purchase, production and overheads idempotently. Use `--sales` to continue through Stage 4 with an explicitly invented exercise-only seller identity.
-
-## Validation
+Run from the repository root. Stop on a failed setup command; do not continue with a partially initialized database. Use a new Compose project name for a fresh demonstration, and keep that name in every Compose command. The example below uses `nova-demo`.
 
 ```sh
 npm ci
+docker compose -p nova-demo config --quiet
+docker compose -p nova-demo up -d --wait db
 npm run db:migrate
 npm run db:migrate:test
-npm run db:seed
-npm run db:seed
+npm run db:seed -- --sales
+npm run db:seed -- --sales
+docker compose -p nova-demo up --build -d --wait app
+npm run test:smoke
+```
+
+Open <http://localhost:3000/login> (or the configured app port). For an alternate app port, set `SMOKE_BASE_URL` to the same browser origin before running the smoke check. In the smoke script, it defaults to `http://localhost:3000`.
+
+These commands seed the complete benchmark, including the sample seller profile, invoice, dispatch and payment. A fresh named volume creates `nova` and `nova_test`; migrations also run before container startup. Only fictional records are used. On unchanged demo data, the second seed reuses request keys and does not post stock or payments again. Seeds preserve existing edits and passwords; they are not reset commands. A password change in `.env` will not reset an existing seeded user.
+
+The checkpoint invoice and payment use **17 November 2026**; stock/production postings use the seed's actual date. To reconcile the complete fixture later, set financial reports to **demo** scope and include 17 November 2026 through the seed's business date in the period/as-of filters. The default current-month range may not include the fixture invoice. For a manual recording, use the actual local transaction dates consistently.
+
+For a recording that shows each posting, seed **masters only** with `npm run db:seed` on a fresh demonstration volume instead. The [recording guide](docs/submission-guide.md) contains the exact opening balances, production inputs and shot sequence. Do not mix a completed `--sales` fixture with manual replay of the same benchmark.
+
+| Seed option    | Checkpoint created on a fresh database                                                       |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| No option      | Users, roles, territories, customers, material/product masters, price and published BOM only |
+| `--inventory`  | Masters, opening inventory and 60 kg flour purchase                                          |
+| `--production` | Inventory checkpoint plus production and labour/utilities                                    |
+| `--sales`      | Full production, sales, sample billing, dispatch and collections benchmark                   |
+
+`docker compose -p nova-demo ps` shows readiness. `docker compose -p nova-demo logs app` shows sanitized startup/migration errors. `docker compose -p nova-demo down` stops services and retains data. Changing environment passwords does not change credentials inside an existing PostgreSQL volume. Use a new project/unused ports for a fresh review rather than deleting working data. Keep the app and database on loopback; do not publish them through a tunnel or public host.
+
+For host development after database setup, use `npm run dev -- --hostname 127.0.0.1`. For a host production build, use `npm run build` then `npm run start -- --hostname 127.0.0.1`. Stop the Compose app first if it occupies the same port; leave PostgreSQL running.
+
+## Demo accounts and roles
+
+All initial accounts use the **local `DEMO_PASSWORD` chosen above**. They are fictional test accounts only. One role is assigned per user. Admins can create users/reset passwords; updates invalidate that user's sessions. Owners and auditors have read-only business access.
+
+| Account                   | Permissions                                                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `salesman.a@example.test` | Retailer A in the assigned Tamil Nadu territory; submit and read own orders/invoices and permitted reports.                                      |
+| `salesman.b@example.test` | Distributor B in the assigned Karnataka territory; same isolated salesman access.                                                                |
+| `admin@example.test`      | All masters, user/territory administration, opening/purchase/adjustment posting, BOMs, production, sales review, billing, dispatch and payments. |
+| `production@example.test` | Suppliers/materials/BOM publication, purchases and production/overheads; inventory and production reports. No sales access.                      |
+| `auditor@example.test`    | Read business masters, stock, production, sales, reports and dashboard; no posting.                                                              |
+| `owner@example.test`      | Read business masters, stock, production, sales, reports and dashboard; no posting.                                                              |
+
+Sessions are stored in PostgreSQL, expire after eight hours and have a one-hour update interval; cookie session caching is disabled. Public signup is disabled. Auth exposes login, session lookup and logout only. Password hashes/session tokens are excluded from master responses and audit data. Salesman history and PDF access require both order ownership and current customer territory assignment.
+
+## Business rules
+
+**Inventory.** Opening, purchase and adjustment documents begin as editable drafts. Posting locks the document and affected item rows in sorted ID order, validates units/available quantity, inserts immutable movements and appends the audit event in one transaction. Failure rolls everything back; repeat posting returns the original document. Changed payloads cannot reuse request keys. Corrections use separately reasoned adjustment documents, never edited balances. Admin posts all categories; production supervisors post purchases and production.
+
+Quantities use base grams, millilitres, pieces and packets. Kilograms/litres convert by 1,000 within their dimension; carton-to-packet conversion requires the product's explicit capacity. Pieces and packets are not interchangeable. Moving weighted average is signed known ledger value / on-hand base-unit quantity; receipt value is entered quantity x entered unit rate. Issues/adjustments use the existing average. PostgreSQL NUMERIC does not round intermediate stock values to paisa; recurring division follows its numeric precision. Unknown opening value conservatively propagates to positive balances and subsequent issue costs; zero stock has zero value. Explicit revaluation is unavailable.
+
+**BOM and production.** Publishing a complete revision locks the product and serializes its version; exactly one revision is active. Published contents cannot change. A run selects a published revision and scales each component by planned batches / standard BOM batch size. Saved snapshots retain planned/actual quantities, damaged subset, good output, tolerance and variance. Posting reuses the same stock engine to issue all actual inputs and receive good packets atomically. Damaged packaging is already included in total consumption, not issued twice.
+
+Variance is `(actual - planned) / planned x 100`. Alerts use the absolute unrounded difference and a default 3% tolerance: exactly 3% is not flagged. Zero expected quantity has an undefined percentage and flags only nonzero actual use. Material snapshots come from posted issue costs; append-only labour/utilities events add to run cost. Run cost / good output uses a 40-significant-digit Decimal context and displays half-up to two decimal places. Finished receipts include **material cost only**; later overheads change the run report, never those immutable receipts.
+
+**Sales and accounting.** A salesman submits whole-packet quantities at server-validated price-list rates. Admin reviews stock and may revise submitted quantities/rates with a reason before approval. Approved lines are frozen. Orders have one invoice and one full dispatch; there are no reservations. Approval and invoice issue check stock without deducting it. Dispatch rechecks under item locks, then posts the source-linked immutable ledger issues. Competing dispatches cannot create negative stock.
+
+Invoice snapshots preserve seller/buyer details, product descriptions, HSN, quantities, prices and taxes. Seller profiles and per-product HSN settings are stored separately for `demo` and `real` modes in PostgreSQL. Real issue requires validated seller fields, state code/GSTIN format/checksum and configured HSN; local checks do not verify an active registration. Current supported supply states are Tamil Nadu and Karnataka. Tax rates are configurable; 5% is an exercise assumption, not a verified statutory product rate. Same-state supply uses CGST/SGST and interstate supply uses IGST. Taxable amount and each tax component are independently rounded half-up per line to paisa, then summed.
+
+Sample issue is a separate action requiring `NOVA_ALLOW_DEMO_INVOICES=true`. Only its fictional profile is seeded, using deliberately invalid `DEMO-NOT-A-GSTIN`. Every sample PDF/interface carries **SAMPLE INVOICE — NOT VALID FOR TAX PURPOSES**. Real profiles are never seeded. Numbering is transactionally serialized by April-March invoice financial year: `SAMPLE/2026-27/00001` versus `NOVA/2026-27/00001`, with separate counters. Failed issuance rolls back its sequence update; retries return the existing invoice. Historical invoices classified as demo by migration retain their original immutable numbers/snapshots and render the sample warning.
+
+Payments are immutable records with positive amounts, date, reference, method, actor and request key. Allocations must exactly equal the payment amount, belong to that customer and stay within invoice outstanding. Customer/invoice locks and deferred PostgreSQL reconciliation prevent concurrent over-allocation or appended allocations exceeding the original payment. The API supports multiple invoice allocations; the UI records one at a time. Full credits preserve the original invoice, require a reason, reverse receivables and never return physical stock. Paid invoices cannot be credited without a future refund workflow.
+
+**Reports.** Sales, customer/product totals, GST review, purchases, current/historical stock, ledger, production, consumption/variance, payments, receivables, customer balances, ageing and orders use authorized SQL in read-only REPEATABLE READ transactions. Dashboard metrics use the same services and current database business date. Business dates use **Asia/Kolkata**; inclusive timestamp periods become local midnight through exclusive next-day midnight. Dates satisfy `from <= to <= asOf`. Stock rollforward extends through as-of; receivables include all eligible invoices through as-of even when older than the selected period. Product-filtered collections select whole matching invoices because allocations are not per product.
+
+Financial reports default to **real scope**; explicitly select **demo scope** to see the benchmark invoice/collections. Physical stock, purchasing, production and orders are shared operational records. Salesmen see only permitted own/customer reports; supervisors see stock/ledger/production/consumption; admin, owner and auditor see business-wide reports/dashboard. Screens paginate 50 rows; totals/exports use the full permitted result. More than 5,000 rows is rejected, with a ten-second reporting statement limit. CSV quotes/escapes cells and protects formula-like text; PDFs paginate with headers. Current PDFs support ASCII and the sample-notice em dash; other characters render as `?`. Exports are review documents, not government returns.
+
+## Benchmark results
+
+The fresh-database verifier executes masters, opening, purchase, production, overheads, Retailer A order/approval/sample invoice/dispatch, Distributor B's blocked order, payment and reports in that order.
+
+| Result                                 | Exact benchmark outcome                                                                         |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Flour purchase / moving average        | 60 kg x INR 45 = INR 2,700; after receipt 160 kg / INR 6,900 = INR 43.125/kg                    |
+| Final flour / oil / spice              | 120 kg / 19.5 L / 3.8 kg                                                                        |
+| Final pouches / cartons                | 306 / 21                                                                                        |
+| Production                             | 200 expected, 188 accepted; yield -6%, oil use +5%, both flagged                                |
+| Material / labour / utilities          | INR 4,055 / 1,200 / 600                                                                         |
+| Run cost / per good packet             | INR 5,855 / 188; displayed INR 31.14                                                            |
+| Finished stock before / after dispatch | 50 + 188 = 238; 238 - 150 = 88 packets                                                          |
+| Retailer A                             | 150 x INR 50 = INR 7,500 taxable                                                                |
+| Assumed intra-state GST / total        | CGST INR 187.50 + SGST INR 187.50; invoice INR 7,875                                            |
+| Distributor B                          | 120 requested - 88 available = 32 short; remains submitted, no invoice/dispatch/stock deduction |
+| Collection / outstanding               | INR 4,000 / INR 3,875                                                                           |
+| Finished stock value / dispatch cost   | Unavailable because the opening 50 packets have no historical value; no profit is fabricated    |
+
+Actual consumption is flour 40 kg, oil 10.5 L, spice 1.2 kg, pouches 194 (including six damaged) and nine cartons. The BOM allows 40 kg / 10 L / 1.2 kg / 200 pouches / ten cartons for 200 expected packets. Pouch variance is -3% (at tolerance, no alert); carton variance is -10% (flagged). Nine cartons cover 180 good packets; eight are assumed loose. No extra carton is invented. A separate integration test verifies an eligible Karnataka invoice uses IGST only; the shortage order does not issue one.
+
+## Validation and schema changes
+
+Keep the application/test URLs separate. These commands exercise the same toolchain as CI; test commands **reset only the explicitly configured `_test` database** and must not run against business data. Install Chromium once.
+
+```sh
+npm run db:migrate
+npm run db:migrate:test
+npm run db:seed:test
+npm run db:seed:test
+npm run verify:system
 npm run lint
 npm run format:check
 npm run typecheck
@@ -63,166 +164,44 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
-docker compose up --build -d app
+docker compose -p nova-demo up --build -d --wait app
 npm run test:smoke
+npm audit --audit-level=high
+npm audit --omit=dev --audit-level=high
 ```
 
-`npm test` resets application test tables in the explicitly configured isolated database whose name ends in `_test`, then seeds fixtures and tests authentication, expiry, authorization, customer isolation, validation, SQL constraints, conversions, BOM preservation and seed reruns. Never point `TEST_DATABASE_URL` at an application database. Playwright uses this same test database with a separate server on port 3100; the browser command resets and seeds its isolated test database before starting. Its mobile Chromium flows cover login/logout, supplier creation, BOM revision and auditor restrictions. `test:smoke` checks the running app at `SMOKE_BASE_URL` (default localhost:3000), using the seeded local demo credentials; it tests HTTP permissions, territory isolation and logout without creating business data.
+`npm ci` is the clean install step shown above. Both audit commands are expected to **fail** for the documented advisory; record their nonzero status rather than hiding it. Functional validation does not override that release gate. Vitest files run sequentially against the same isolated database. Playwright resets that database and starts a separate production server bound to loopback on port 3100. Smoke checks use the Docker app and seeded local password; they do not create business documents.
 
-The CI workflow runs these checks against a PostgreSQL service. To evolve the schema, run `npm run db:generate -- --name meaningful_name`, review its SQL and commit the migration; custom constraint migrations must also be versioned. Never edit an already applied migration.
+`verify:system` creates a uniquely named disposable database through `TEST_DATABASE_URL`, migrates twice, runs/reruns the complete benchmark and generates every report/CSV/PDF, then drops only that database. The local role needs database-creation permission. Optional `-- --measure` builds synthetic load only in that disposable database, measures the allocation index and 5,000-row exports, and checks 5,001-row rejection. Stage 6 local measurements were about 677 ms versus 6.5 ms for the allocation lookup, 419 ms for the report, 36 ms for CSV and 51 ms for PDF. These are local synthetic timings, not throughput/peak-memory guarantees.
 
-## Current limitations
+Generate future ORM migrations with `npm run db:generate -- --name meaningful_name`, review/commit the SQL and metadata, and version custom SQL constraint changes as well. Never edit an applied migration. The workflow keeps a separate **blocking dependency-audit job** and an independent functional job, read-only token permissions and 15/30-minute limits. No Git remote is configured, no push is authorized and no real GitHub Actions pass is claimed.
 
-This stage is a local assessment foundation, with one app instance. Auth rate limiting is held in process memory; multiple instances would need shared rate-limit storage. HTTPS and deployment-specific secrets are required outside localhost. There is no email delivery, password recovery, account deactivation, or production bootstrap command. Master lists are not paginated. Prices retain audit history but do not yet have effective dates or customer-specific price lists. Users have one assigned role. BOMs are published immediately rather than saved as drafts. Remaining business benchmark modules, exports, the final design note and the submission walkthrough belong to later stages.
+Stage 7 verification on 18 November 2026 used a new Compose project/volume on loopback ports 15432/3300, with independently generated private credentials and no existing application data. Clean `npm ci`, application migrations twice, test migrations, full benchmark seed twice, test seed twice, lint, formatting, type checking, **58 tests across eight files**, **six Chromium flows**, the production build, Docker rebuild/readiness and HTTP smoke checks passed. A separate disposable-database system check reconciled the full benchmark. The fresh Docker app also verified all benchmark quantities/costs/taxes/receivables through authenticated APIs, all **14 reports with 14 CSV and 14 PDF exports**, and empty real financial scope. The design note was parsed and visually checked at exactly two pages; document links were checked locally.
 
-## Stage 2 inventory
+Configuration validation rejected a missing authentication secret and confirmed both published service ports stayed on `127.0.0.1`. When selecting a separate environment file for validation, use `DOTENV_CONFIG_PATH` without forcing `DOTENV_CONFIG_OVERRIDE`: subprocess failure tests intentionally supply invalid connection values which must take precedence. Final full and production audits both exited **1**, retaining **16 and five high entries** respectively. Clean installation also emitted upstream deprecation warnings for ESLint 9 and legacy esbuild-kit packages; Stage 7 did not replace the pinned toolchain or weaken CI. No remote CI pass or recorded video is claimed.
 
-The Inventory page supports opening and purchase drafts, draft edits, posting, purchase history, stock summary/valuation, adjustments, movement details and item/category/UTC date filters. Admins can post all three document categories; production supervisors can create and post purchases. Owners and auditors can read; salesmen cannot access inventory.
+## Backup, limitations and release prerequisites
 
-Migrations 0004 and 0005 define `stock_documents`, `stock_document_lines`, `inventory_movements`, the derived `stock_summary` view and posting/immutability triggers. These SQL objects are maintained through custom Drizzle migrations and accessed through parameterized Drizzle SQL services. Documents have explicit purchase/opening/adjustment categories; each movement has a foreign-key document and line, item, base unit, actor, time, signed quantity/value, and original/corrected quantity. There is no editable balance cache.
-
-Posting locks the document, then all affected inventory item rows in item-ID order. PostgreSQL validates units, quantities and available stock, inserts the movements, updates the document and appends its audit event in one transaction. A line failure rolls everything back. Repeated posting returns the existing document; unique request keys protect draft creation, and changed payloads with reused keys are rejected. Published movements and posted documents/lines cannot be edited or deleted. Draft changes are audited. Corrections are signed adjustment documents with mandatory reasons; adjustments never overwrite balances.
-
-Moving average is total signed known ledger value divided by on-hand base-unit quantity. Receipt value is entered quantity times its unit rate; issues and positive adjustments use the existing average. PostgreSQL arbitrary-precision NUMERIC performs the authoritative arithmetic without a two-decimal intermediate rounding step. Recurring division follows PostgreSQL NUMERIC precision. Currency display alone uses decimal half-up rounding to two places. The 50 finished packets have unknown value; unknown movements conservatively keep subsequent positive balances unvalued (zero stock has zero value). Explicit revaluation is not available in this stage.
-
-`npm run db:seed -- --inventory` creates the exact opening quantities and the 60 kg flour purchase, with an explicitly invented demo flour supplier. Run it again to check idempotency. Its checkpoint is: flour 160 kg / INR 6,900 / INR 43.125 per kg; oil 30 L; spice 5 kg; pouches 500; cartons 30; finished Murukku 50 packets with unavailable valuation. The `--inventory` flag stops before production; `--production` continues through the next checkpoint. The integration suite asserts each checkpoint value before testing later adjustments.
-
-`npm test` includes database tests for posting/reruns, request idempotency, exact receipt value, weighted average, competing issues, insufficient stock, rollback, units, immutable records, reconciliation and permissions. Test files run sequentially because they reset the same isolated database. The browser suite adds opening/purchase form posting to Stage 1 regressions. Lists remain unpaginated and there is no purchase cancellation or explicit revaluation workflow; a posted correction is a separate adjustment with a reason. This is a single PostgreSQL database design, with no external accounting service.
-
-## Stage 3 production
-
-Production runs are drafts linked one-to-one to Stage 2 stock documents. Select a finished product, published BOM revision and planned batch count; the service scales each component and expected output by `planned batches / BOM standard batch size`. Enter total actual consumption, included damaged/wasted quantities, good packets and a variance tolerance (default 3%). Drafts can be edited with audit history and never affect stock. Admins and production supervisors can create/edit/post runs and add overheads. Owners and auditors can read; salesmen cannot access production.
-
-Migrations 0006–0008 add `production_runs`, `production_inputs`, `production_cost_snapshots`, `production_overheads` and the `production_costs` view. BOM identity, revision, planned quantities, actual consumption, damage and tolerance are saved in each run snapshot. Posting preserves that snapshot and rejects later changes. It reuses the inventory `postDocument` service and the existing `post_stock_document` trigger, extended for production documents. All affected items are locked in deterministic order; actual material/packaging issues and the accepted finished output are posted together, or all roll back. Posting retries do not add movements. The finished receipt is valued at the sum of actual consumed material costs from the issue movements. A material cost snapshot is created in that same transaction.
-
-Damage is a subset of total consumption, never an extra issue: benchmark pouches are 194 total, including 6 damaged and 188 used on good packets. Packaging status is not separately tracked; nine cartons cover 180 of the 188 good packets, so the remaining eight are assumed loose. No extra carton is fabricated. Every BOM component currently requires positive actual consumption and each run requires positive whole good output; zero-output failed runs and omitted/substituted components are not supported.
-
-Variance is `(actual - planned) / planned * 100`, computed with decimal arithmetic. Alerts compare the absolute unrounded difference against tolerance using cross multiplication, so exactly 3% is not flagged. A zero expected quantity yields an undefined percentage and flags only nonzero actual use. The run preserves the tolerance used. Users may configure it per draft. Material and yield variance displays come from the saved snapshot.
-
-Overheads are positive append-only events with category, reason, actor, time and idempotency key. They may be recorded before or after posting. Each addition records before/after run-cost information in the audit trail; run cost is material snapshot plus overhead events, divided by good output. Existing material snapshots and ledger entries never change. Overhead corrections/reversals and a formal costing-close workflow are not implemented. Draft material costs are unavailable until posting. Production computations use decimal strings and a 40-significant-digit Decimal context; authoritative stock valuation remains PostgreSQL NUMERIC. Currency display uses two-place half-up rounding.
-
-Finished inventory valuation remains provisional: produced receipts carry material cost only. Subsequent overheads affect the run report, not those immutable receipts. The initial 50 packets remain explicitly unvalued; consequently aggregate finished inventory value stays unavailable even though this production run has a measurable cost. NOVA does not spread the run cost across all 238 packets or invent an opening value. A future financial close/revaluation design is needed before treating this as final financial inventory valuation.
-
-The complete `--production` checkpoint (also asserted against isolated PostgreSQL in the test suite) is:
-
-| Result                               | Value                                |
-| ------------------------------------ | ------------------------------------ |
-| Flour / oil / spice                  | 120 kg / 19.5 L / 3.8 kg             |
-| Pouches / cartons / finished packets | 306 / 21 / 238                       |
-| Yield / oil variance                 | -6% / +5%, both flagged              |
-| Flour / oil / spice costs            | INR 1,725 / 1,470 / 240              |
-| Pouches / cartons costs              | INR 485 / 135                        |
-| Materials / overheads / total        | INR 4,055 / 1,800 / 5,855            |
-| Cost per accepted packet             | INR 5,855 / 188, displayed INR 31.14 |
-
-Other consumption variances are flour 0%, spice 0%, pouches -3% (at tolerance, no alert), and cartons -10% (flagged). The fixture uses the unchanged benchmark revision 1 and does not dispatch anything. Browser tests cover supervisor draft/posting, overhead addition and read-only auditor costing, alongside Stages 0–2 regressions. Lists remain unpaginated and costing is a run report rather than a statutory accounting report.
-
-## Stage 4 sales and receivables
-
-`/sales` provides mobile order entry/history, admin review with quantity/rate changes and reasons, invoice/PDF, full dispatch, partial payments and outstanding balances. Salesmen select only their territory customers, submit at server-validated price-list rates and read only their own orders/invoices. Admins write; auditors and owners read; production supervisors cannot access sales. Orders progress from submitted to approved, invoiced and dispatched, or are rejected/cancelled. Approved lines are immutable. Invoice snapshots preserve seller/buyer details, prices, description, HSN and taxes. Changes and financial/physical posting create actor/time audit events.
-
-Migrations 0009-0010 add `sales_orders`, `sales_order_lines`, `invoices`, `invoice_sequences`, `dispatches`, `payments`, `payment_allocations`, `credit_notes` and the `invoice_balances` view. These follow the existing custom SQL migration pattern; metadata snapshots cover ORM-managed master tables. Financial records are append-only. Orders support multiple distinct products, one invoice and one full dispatch. There are no reservations: approval and invoice issue check on-hand under sorted item locks without reducing stock. Competing orders may consume stock before dispatch. Dispatch rechecks via the existing PostgreSQL stock posting function and locks, preventing negative balances. Its source invoice and quantities are validated. Errors roll back dispatch document, lines, ledger and order state. Dispatch alone reduces stock.
-
-The benchmark assumes 5% GST, taken from the configurable product price list. The dedicated decimal tax service compares seller state and customer state (place of supply): matching states use CGST/SGST, otherwise IGST. Per line, taxable amount and each tax component are independently rounded half-up to paisa, then summed. Very small lines can therefore have two independently rounded half-paisa components. No authoritative financial calculation uses floating point. This exercise policy does not establish universal rates or statutory compliance. Admins configure seller name, address, state and GSTIN in a PostgreSQL business profile and an HSN for each product. Invoice issue reads this configuration on the server and snapshots it with customer details. HSNs may differ between products. Active-registration verification, e-invoices and e-way bills are not implemented.
-
-Financial years run April-March using the entered invoice date. A transactional PostgreSQL upsert serializes the sequence per year, producing `NOVA/2026-27/00001`. Sequence increments roll back on failed issue. Reissuing the same order returns its existing invoice. Server-side invoice PDFs preserve snapshots and enforce the same read authorization. The dependency-free text PDF renderer paginates long invoices. It supports ASCII and the sample-notice em dash; other characters render as `?`. English demo data is supported.
-
-Payments preserve date, reference, method, actor, amount and idempotency key. Allocations must sum exactly to payment amount, belong to the customer and not exceed outstanding. The API accepts multiple invoice allocations; the UI enters one invoice allocation at a time. Customer and invoice locks prevent concurrent over-allocation. Database triggers check ownership/balance and defer full-payment reconciliation until commit. There is no unapplied-credit or refund model. Full credit notes link to the immutable original invoice, reverse receivable and retain reason/actor/time. Invoices with payments cannot be credited until a refund workflow exists. Credits never reverse physical dispatch. Partial credits, partial dispatch, returns, offline capture and pagination are not implemented.
-
-Dispatch uses existing weighted-average valuation. Opening finished packets remain unvalued, so benchmark cost of goods sold and aggregate remaining inventory value stay explicitly unknown. Stage 3's known run cost is preserved; gross profit is not fabricated.
-
-`npm run db:seed -- --sales` continues the earlier checkpoints through the full sales benchmark and is rerunnable on unchanged demo data. Its manufacturer, GSTIN, address and HSN are explicitly invented exercise-only fixtures, never application defaults or real billing identities. It asserts 88 finished packets, INR 7,875 invoice, INR 4,000 paid, INR 3,875 outstanding and 32-packet shortage. Tax on INR 7,500 is INR 187.50 CGST plus INR 187.50 SGST. Distributor B remains submitted; interstate preview shows IGST. PostgreSQL tests cover the benchmark, concurrency, permissions, immutability, numbering, credits, allocations and rollback. Chromium covers mobile salesman order through admin approval/invoice/PDF/dispatch/payment and auditor read-only access.
-
-### Configured billing and sample invoices
-
-Migration 0011 adds separate `demo` and `real` rows in `business_profiles`, product HSNs per mode in `product_tax_settings`, and an invoice issuance-mode column. Admins configure these under **Business profile and product HSN configuration** on `/sales`. Profile changes are audited and cannot change posted seller, buyer, tax or HSN snapshots. GST rates remain configurable in Prices and are captured with order lines; 5% is only the benchmark exercise assumption.
-
-Real invoice issue accepts the date and optional buyer GSTIN, never a request-supplied seller or HSN. A real profile must contain the required name/address and a GSTIN with valid PAN-based format, matching state code and checksum; every ordered product requires a configured HSN. Current state support is Tamil Nadu and Karnataka; other states fail closed. Local validation is not verification of an active GST registration. The format follows the [CBIC registration rules](https://cbic-gst.gov.in/gst-registration-rules.html); this prototype does not establish statutory compliance.
-
-Sample issue has a separate service/API action and is disabled unless `NOVA_ALLOW_DEMO_INVOICES=true`. The example environment defaults it to false; enable only in an explicitly designated demo deployment (including the local exercise). Demo setup populates only the demo profile with the fictional manufacturer, deliberately invalid `DEMO-NOT-A-GSTIN` and exercise product HSN. This identifier fails real invoice validation. No real profile is seeded. Sample invoices display **SAMPLE INVOICE — NOT VALID FOR TAX PURPOSES** in the interface and PDF and save that notice in new snapshots. They use their own `SAMPLE/<financial-year>/<sequence>` numbering; real invoices retain `NOVA/<financial-year>/<sequence>`. Benchmark sample documents are exercise transactions only and must not be used for real collections or billing. Switching an already invoiced order between modes is prohibited.
-
-Invoices created before this separation are conservatively classified as demo by migration and render the sample notice without editing their immutable snapshots or historical numbers. The current benchmark seed may reuse those historical demo invoices; fresh benchmark databases create SAMPLE numbers. Tests also use explicitly synthetic, checksum-valid identities solely to exercise real-mode validation, never real company data.
-
-### Stage 4 final verification
-
-Executed validation: `npm test` passed 38 tests across five files (including Stage 0-3 regressions); `npm run test:e2e` passed six Chromium flows; lint, formatting, type checking and the production build passed. Docker-backed HTTP smoke checks and repeated `--sales` seeds passed. The expanded mobile flow downloads and checks the sample PDF, dispatches Retailer A, records its partial payment, checks auditor read-only access, submits Distributor B and verifies blocked approval with 32 packets short. The test reuses its valid admin session while switching roles to respect the existing login rate limit; application authentication is unchanged.
-
-The isolated PostgreSQL checkpoint confirms INR 7,500 taxable, INR 187.50 CGST, INR 187.50 SGST, INR 7,875 total and INR 3,875 outstanding after INR 4,000 payment. Exactly one source-linked dispatch movement issues 150 of 238 packets, leaving 88. Distributor B stays submitted without an invoice or stock deduction. Its interstate preview uses IGST; a separate integration test issues an actual eligible Karnataka invoice and verifies IGST only. Other tests verify financial-year sequence rows, immutable snapshots, concurrency, idempotency, traceability, allocation ownership/totals and preserved unknown finished-goods valuation.
-
-Final review found and reproduced a database guard gap: appending another allocation to an existing payment could exceed that immutable payment's amount. Migration 0012 adds a deferred allocation-total check, rejecting the transaction unless allocations equal the payment amount. The regression test now passes. Existing services and stock-posting architecture remain unchanged. Those checks covered Stage 4; Stage 5 behavior is described below.
-
-## Stage 5 reports and dashboard
-
-`/reports` provides the sales register, customer/product sales, outward GST review, purchases, current/historical stock, stock ledger, production register, consumption/waste/variance, payments, invoice collections/receivables, customer balances, invoice-age buckets and submitted order history. `/dashboard` shows orders submitted today, pending approvals, month invoiced sales (gross), physical finished/raw stock, monthly yield alerts/run costs and customer outstanding, with links to details. Figures come from the same reporting services used by the reports; no trends, margins or profit are invented.
-
-`src/modules/reporting` contains authorized PostgreSQL queries, report definitions/columns, exact decimal totals, exports and dashboard composition. A report or dashboard runs inside a read-only REPEATABLE READ transaction. No balances are written, no second ledger/accounting engine is added and Stage 5 needs no schema migration. `src/lib/pdf/text.ts` shares the existing paginated PDF writer with invoices and reports. CSV/PDF exports use the same result/columns/totals as the screen.
-
-| Report                          | Source and definition                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sales / customer / product      | Immutable invoice line snapshots, order attribution and business invoice date. One register row per invoice; product filtering sums only matching lines, while whole invoice amount is informational. Gross original invoice values are retained alongside as-of credited status. Customer/product aggregates group by identity and retain distinct snapshot names.                                                       |
-| Outward GST review              | Snapshot taxable/CGST/SGST/IGST grouped by supply treatment and recorded tax rate; full credit notes are negative events on their local recorded date. Review aid only, not an official GSTR-1/GSTR-3B filing or government validation.                                                                                                                                                                                   |
-| Purchases                       | Purchase-category stock documents/lines and supplier masters. Draft creation or posting timestamp, entered units/rates and line values; draft and posted status shown. Totals include all displayed statuses. Opening stock is excluded. Supplier taxes were not recorded and are not invented.                                                                                                                           |
-| Stock / ledger                  | Signed immutable inventory movements and source documents. Base units, opening + receipts - issues + signed adjustments = closing. Source document/actor and invoice/production linkage are exported. Known movement subtotal is labelled separately from complete valuation; a null historical value conservatively propagates under the existing Stage 2 policy.                                                        |
-| Production / consumption        | Posted runs, saved BOM/variance/consumption snapshots, immutable material costs and the existing production_costs view. Run costs exclude overhead events after as-of, leaving material snapshots and movements unchanged. Consumption includes waste already within actual consumption. Product names use the current master because earlier run snapshots did not store them; component names use their saved snapshot. |
-| Payments / receivables / ageing | Payments and their actual invoice allocations, immutable invoice totals and full credits. Collections sum allocations once. Whole payment amount is informational. As-of outstanding subtracts only dated collections and credits at that cutoff. Age is calendar days since invoice, not days overdue; no due dates or terms were recorded.                                                                              |
-| Orders / dashboard              | Submitted order records with current status, existing stock/report queries and database business date. Orders have no demo/real mode before invoicing; physical stock and orders remain shared operational records.                                                                                                                                                                                                       |
-
-Business reporting timezone is **Asia/Kolkata**. Date inputs are inclusive; timestamp predicates use local midnight through the exclusive midnight after the final day. Invoice/payment dates are already stored business dates; credits use their recorded local date, purchases/production use posting timestamps. Backdated invoices/payments restate their business date, rather than pretending their entry timestamp is an immutable period-close boundary. Stock uses existing movement posting timestamps (transaction timestamps); actual commit time was not recorded. Ledger ordering is posting time plus movement ID, including deterministic ordering for ties.
-
-Filters include from/to, as-of, customer/product/salesman IDs, inventory item ID and invoice status. All require `from <= to <= asOf`. Sales/GST/purchases/production/payments/ledger use the from/to period; stock rollforward covers from through as-of. Receivables/ageing include all eligible invoices on or before as-of, regardless of period start, so older unpaid invoices are not silently lost. Product-filtered receivables and collections select whole matching invoices: allocations were not recorded per product and are not prorated. Order status is current, not a reconstruction of historical transitions. A current stock view is the stock report with today as-of. The dashboard uses today's database business date and current-month financial/production ranges.
-
-Financial reports default to **real invoice scope**, excluding every demonstration invoice. Demo scope is an explicit selection and carries a demonstration/non-statutory label in screens, PDFs and CSV metadata. Sample and real collections are partitioned by their allocated invoices, including a payment allocated across both modes. Operational purchase/production/stock/order reports are not partitioned by invoice scope; the screen explains this. Tax reports consume the recorded configurable rate and rounded snapshot amounts, never hardcode 5% for real operations. Full credit events are supported; partial credits/refunds remain outside the existing financial model.
-
-Admin, owner and auditor can read business-wide reports/dashboard. Production supervisors can read inventory and production reports only. Salesmen can read their own sales/orders/receivables for customers still assigned to their territory; other customer/salesman filters are rejected, and global GST/purchase/payment/stock reports and the dashboard are forbidden. API and export handlers apply these restrictions before querying/exporting. Reports expose no write operations.
-
-CSV uses quoted UTF-8 cells, escaped quotes/newlines, formula-prefix protection for text, exact decimal numeric values, explicit data/totals/empty record types and date/scope/timezone metadata. PDFs paginate with repeated report/date/scope headers, labelled values, totals, empty states and definitions. Existing font limitations remain: ASCII and the notice em dash are supported; other characters render as `?`. Exports are review documents, not signed/statutory returns.
-
-The benchmark demonstration reports reconcile to INR 7,500 taxable + INR 187.50 CGST + INR 187.50 SGST = INR 7,875; INR 4,000 allocated and INR 3,875 outstanding. Stock is 120,000 g flour (120 kg), 19,500 ml oil (19.5 L), 3,800 g spice (3.8 kg), 306 pouches, 21 cartons and 88 finished packets. Flour purchase is 60 kg at INR 45/kg = INR 2,700. Production is 200 expected / 188 accepted, -6% yield, +5% oil use, INR 5,855 run cost and INR 31.14 displayed per good packet. Distributor B's unfulfilled submitted order contributes no invoice, tax or dispatch figures (the benchmark blocks approval; it is not automatically marked rejected). Opening finished valuation and affected dispatch cost remain explicitly unavailable.
-
-Reports render 50 records per page, preserving totals over the whole result. A report/export exceeding 5,000 rows is rejected with a request to narrow filters, and reporting transactions have a ten-second statement limit. Reports remain synchronous, with IDs entered for optional master filters. Exports are generated in memory; there is no export job queue, closed-period accounting, historical order-state replay, purchase tax reconstruction or government-return integration. Current master labels/territories may change; financial snapshots remain immutable. Additional Stage 6 review results follow below.
-
-Stage 5 validation executed: clean `npm ci` (zero reported audit vulnerabilities), application/test migrations, two `--sales` seed reruns, lint, formatting, type checking, **50 automated tests across six files**, **six Chromium flows**, production build, Docker rebuild and expanded HTTP smoke checks all passed. Twelve reporting tests cover the complete benchmark, boundary/as-of filtering, historical stock reconciliation, multi-line invoice totals, tax/credit summaries, scope-partitioned allocations, permissions, ageing, overhead updates, repeatable-read consistency and export escaping. The browser flow verifies real-scope emptiness, explicit demo selection, CSV/PDF downloads and forbidden salesman exports. A generated sales PDF was additionally parsed, rendered and visually inspected; its demo label and INR 7,875 total were verified. Currency displays round half-up to two places; unit rates retain precision, and aggregate source totals may differ from summing individually rounded fractional-paisa displays.
-
-## Stage 6 engineering review
-
-Migration 0013 adds persistent account login counters, an invoice-ID allocation index, stricter order-state/line ownership guards and full-credit insert validation. Regression tests reproduced reopening approved orders, moving frozen lines, direct credits against paid invoices, and stale salesman history after territory reassignment; those paths now reject the operation or hide the reassigned customer's records. Normal posting still uses the original stock engine, atomic transactions and deterministic item locks. Financial/ledger/audit records remain immutable. Full credits still do not return physical stock.
-
-API writes enforce the configured origin and accept at most 64 KiB of JSON; malformed JSON and oversized bodies return controlled errors. Sign-in counters use atomic PostgreSQL upserts, survive app restarts, count successful and failed attempts, expire after 60 seconds and remove stale counters. Existing Better Auth in-memory IP/general limits remain; they reset on restart and depend on the deployment's client-IP/proxy handling. No distributed IP-denial-of-service protection or reverse proxy is supplied. Login fields are cleared after capturing the submission, and logs contain error names/codes rather than passwords, session tokens or database URLs. Session expiry, role checks, customer ownership, export authorization and demo/real validation remain server-side. API responses are non-cacheable; frame embedding is denied and content-type/referrer headers are set.
-
-Database pools have five-second connection waits and handle idle connection failures without an unhandled process error. API database connection failures return a generic 503. Failed migrations log a sanitized error code and stop startup. The Docker app runs as the existing unprivileged `node` user and has a readiness check backed by PostgreSQL. PostgreSQL's local Compose role still owns schema/migrations; separate migration/runtime database roles, production bootstrap, password recovery and proxy/TLS setup remain outside this local prototype.
-
-Navigation includes a keyboard skip link, active page indicator and scrollable mobile links; route titles use Next.js metadata. Stock/production/dispatch posting and full credits have confirmation prompts. Loading/error boundaries provide retry and sign-in actions, and sales failures use alerts with session-expiry redirection. Tables retain horizontal scrolling; report pages display 50 rows at a time while exports and totals use the complete permitted result. Other operational lists and catalog selection lists remain unpaginated. Automated browser coverage measures the 360 px order path and visits all implemented workspace routes at a 768 px tablet viewport; this is not a human usability study or a full accessibility certification.
-
-`npm run verify:system` requires a separate `_test` database URL and a PostgreSQL role allowed to create databases. It creates a uniquely named disposable database, runs all migrations twice, seeds masters/opening/purchase/production/sales, reruns idempotent sales actions, verifies the complete benchmark and generates every report/CSV/PDF, then drops only its own database. It never resets the application database. `npm run verify:system -- --measure` additionally creates clearly synthetic load documents only in that disposable database and compares the allocation lookup with/without its index. The comparison temporarily drops/recreates that index only in the disposable database. It exercises a 5,000-row report and verifies that a 5,001-row result is rejected rather than silently truncated.
-
-On this local Node 24 / Docker PostgreSQL 17 setup, a measured 5,000-invoice allocation lookup fell from about 677 ms to 6.5 ms with the new index. A 5,000-row receivables report took about 419 ms; CSV generation took 36 ms (5.07 MB), PDF generation 51 ms (3.00 MB), with a 94.7 MiB heap-used sample after generation. These are local synthetic measurements, not throughput promises or measured peak memory. Synchronous exports remain bounded and should be narrowed for larger datasets. The owner dashboard now counts orders in SQL rather than loading the entire order history; detailed report limits still apply to its other report tables.
-
-### Backup and recovery
-
-Backups contain credential hashes and session data: restrict access, keep them outside Git, and store copies outside the database volume. `backups/` is ignored. The following PowerShell example makes a PostgreSQL custom-format backup and tests it in a new, empty database. Continue only if each command succeeds; choose an unused restore database name. It does not restore over the working database.
+The local Compose PostgreSQL role owns schema/migrations and is not a restricted production runtime role. Backups include credential hashes/session data: keep them outside Git, restrict access and protect off-host copies. The following PowerShell sequence copies a custom-format backup and restores it into a **new, empty** database. Stop if any command fails; choose another unused restore name if it already exists.
 
 ```powershell
 New-Item -ItemType Directory -Force backups
-docker compose exec -T db pg_dump -U nova -d nova --format=custom --file=/tmp/nova-backup.dump
+docker compose -p nova-demo exec -T db pg_dump -U nova -d nova --format=custom --file=/tmp/nova-backup.dump
 if ($LASTEXITCODE -ne 0) { throw 'Backup failed' }
-docker compose cp db:/tmp/nova-backup.dump ./backups/nova-backup.dump
-docker compose exec -T db createdb -U nova nova_restore_check
+docker compose -p nova-demo cp db:/tmp/nova-backup.dump ./backups/nova-backup.dump
+docker compose -p nova-demo exec -T db createdb -U nova nova_restore_check
 if ($LASTEXITCODE -ne 0) { throw 'Choose a new empty restore database' }
-docker compose exec -T db pg_restore -U nova -d nova_restore_check --exit-on-error /tmp/nova-backup.dump
+docker compose -p nova-demo exec -T db pg_restore -U nova -d nova_restore_check --exit-on-error /tmp/nova-backup.dump
 if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
 ```
 
-After restoring, compare invoice/payment totals, ledger quantities/values, audit counts and migration versions before planning any application switchover. An executed Stage 6 restore into a disposable database matched the working database's ledger, invoice-snapshot and payment checksums and audit count. The review removed its temporary backup and restore database afterward; it did not overwrite working data. Recovery of a real deployment still requires an operator-controlled switchover and protected off-host backups.
+Compare ledger, invoice snapshots, payment totals, audit counts and migration versions after a restore before planning an operator-controlled switchover. Stage 6 tested a disposable restore and matched ledger/invoice/payment checksums and audit count; it did not overwrite working data. The backup directory is excluded from Git and Docker builds.
 
-The GitHub Actions workflow runs dependency audit, fresh-database verification, regressions, browser/build and HTTP checks. No Git remote is configured in this checkout, so no push or remote CI run is claimed. Stage 7 deployment, submission artifacts and video preparation have not been started.
+Known limits: no production bootstrap/password recovery/email delivery/account-deactivation workflow; no stock reservations, partial dispatches, partial credits, refunds or physical returns; no zero-output failed runs, omitted/substituted BOM inputs or overhead reversals; no explicit revaluation/financial close; no closed reporting periods, historical order-state replay, purchase-tax reconstruction, e-invoices/e-way bills or GST-return integration. Master/operational lists remain unpaginated; exports are synchronous, in memory and capped as above. One product represents one pack size; a 500 g pack needs its own product, price, HSN setting and published BOM. Existing 200 g identity/history must remain intact.
 
-### Stage 6 validation and open audit finding
+Audit events store actor/action/document/time and before/after data in the same transaction as the business change and are immutable under application database guards. A privileged database owner can bypass guards; this is not an external tamper-proof audit system. Eight-hour server sessions, origin checks, a 64 KiB JSON limit, sanitized database errors, non-root app container and response headers are implemented. Account sign-in counters use atomic PostgreSQL HMAC keys (ten attempts per account per 60 seconds); Better Auth's separate IP/general counters remain in process memory and depend on correct proxy/client-IP handling. Distributed denial-of-service protection is not supplied.
 
-Executed checks passed: clean installation, application/test migrations and seed reruns, fresh-database benchmark/report/export verification, 58 automated tests across eight files, production build, six browser flows and Docker build/readiness/HTTP smoke checks. Controlled tests cover a refused database connection, health-handler 503 output and a failing migration subprocess with sanitized diagnostics. A separate live HTTP outage-instance probe was not run: its launch was blocked by the tool policy, so these narrower tests were used without stopping the working database. The app container was verified as UID 1000 (`node`). The measured automated 360 px order path was about 0.49 seconds, excluding login; it does not establish human entry time. All implemented workspace routes were checked at 768 px for headings, page titles and document overflow, and mobile/tablet captures were inspected. Interrupted production-post response/retry, cancelled dispatch confirmation, malformed/oversized JSON, cross-customer invoice PDF access and unauthorized exports are covered by browser checks.
-
-**Dependency audit remains failing.** The executed full `npm audit` reports 16 high-severity affected-package entries stemming from [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) / CVE-2026-112366 (Picomatch ReDoS). The upstream advisory lists no patched release; npm's latest Picomatch version checked during review was 4.0.7. `npm audit --omit=dev` still reports five affected packages because Better Auth declares Vitest as an optional peer; production audit is therefore not claimed clean. NOVA's HTTP services do not accept user-supplied glob patterns, but that does not remove the vulnerable dependency or justify suppressing the finding. The pinned compatible toolchain is retained; forced incompatible downgrades are not applied. Recheck and update the lockfile when an upstream patch is available.
-
-CI has a separate, blocking dependency-audit job, so the unresolved advisory remains visible while the independent functional-validation job can still run. Workflow token permissions are read-only. There is no configured remote, so these jobs have not been executed on GitHub and no remote CI pass is claimed. Functional validation does not constitute an all-clear security audit while this finding is open.
+Before any public release: remediate the dependency advisory in both npm and Next's bundled copy and rerun security/regressions; establish production credentials/bootstrap, restricted runtime/migration roles, TLS/proxy/IP handling and rate limits, protected backups and a recovery procedure; review real billing/tax configuration and deployment-specific security. None of this authorizes public deployment. The local assessment and functional validation do not establish statutory or security compliance.
 
 ### Dependency risk assessment
 
